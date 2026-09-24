@@ -23,6 +23,14 @@
   <meta name="twitter:title" content="Night Vector — Neon Highway Racer">
   <meta name="twitter:description" content="Thread the traffic. Own the night. Play instantly in your browser.">
   <meta name="twitter:image" content="__PUBLIC_URL__/og-image.jpg">
+  <!-- Structured data (a data block — not executed, so the strict CSP doesn't apply) -->
+  <script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"VideoGame","name":"Night Vector","url":"__PUBLIC_URL__/",
+     "description":"A neon arcade highway racer: thread the traffic, chain near misses, outrun the police and climb the leaderboards.",
+     "image":"__PUBLIC_URL__/og-image.jpg","genre":["Racing","Arcade"],"gamePlatform":["Web browser","PWA"],
+     "applicationCategory":"Game","operatingSystem":"Any","playMode":"SinglePlayer",
+     "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+  </script>
 
   <!-- App / PWA -->
   <link rel="manifest" href="manifest.webmanifest">

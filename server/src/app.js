@@ -7,6 +7,7 @@ export function createApp({ config, log, api = null, version }) {
   const baseHeaders = securityHeaders(config);
   const serveStatic = createStaticHandler(config, api ? { extraRoutes: api.staticRoutes || {} } : {});
   const startedAt = Date.now();
+  const indexable = config.appEnv === 'production';
 
   return async function handle(req, res) {
     for (const [k, v] of Object.entries(baseHeaders)) res.setHeader(k, v);
@@ -28,6 +29,20 @@ export function createApp({ config, log, api = null, version }) {
           version,
           uptime: Math.round((Date.now() - startedAt) / 1000),
         }, { 'Cache-Control': 'no-store' });
+      }
+      // Search engines: production is indexable; dev/staging never are.
+      if (!indexable) res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+      if (path === '/robots.txt') {
+        const body = indexable
+          ? `User-agent: *\nAllow: /\nDisallow: /api/\n${config.publicUrl ? `Sitemap: ${config.publicUrl}/sitemap.xml\n` : ''}`
+          : 'User-agent: *\nDisallow: /\n';
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+        return res.end(body);
+      }
+      if (path === '/sitemap.xml' && indexable && config.publicUrl) {
+        const body = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${config.publicUrl}/</loc></url></urlset>\n`;
+        res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+        return res.end(body);
       }
       if (path === '/api' || path.startsWith('/api/')) {
         if (!api) return sendError(res, 404, 'not_found', 'Unknown endpoint.');
