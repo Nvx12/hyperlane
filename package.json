@@ -1,0 +1,26 @@
+{
+  "name": "night-vector",
+  "version": "1.0.0",
+  "description": "Night Vector — a neon arcade highway racer for the browser, with a small Node backend for leaderboards.",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "node --no-warnings=ExperimentalWarning --watch-path=server server/src/index.js",
+    "start": "node --no-warnings=ExperimentalWarning server/src/index.js",
+    "build": "node tools/build.mjs",
+    "assets": "node tools/generate-assets.mjs",
+    "lint": "eslint .",
+    "test": "node --no-warnings=ExperimentalWarning --test \"tests/unit/*.test.js\" \"tests/api/*.test.js\"",
+    "e2e": "playwright test",
+    "stats": "node --no-warnings=ExperimentalWarning server/scripts/stats.js"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0"
+  }
+}

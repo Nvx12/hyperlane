@@ -378,6 +378,28 @@ kbd.wide { min-width: 64px; }
 }
 @keyframes scan { 0%, 100% { transform: scaleX(0.4); opacity: 0.5; } 50% { transform: scaleX(1); opacity: 1; } }
 
+/* Logo: thin, wide-tracked "NIGHT" over a slanted neon "VECTOR". */
+.logo { display: flex; flex-direction: column; align-items: flex-end; background: none; color: inherit; filter: none; line-height: 0.92; }
+.logo-top {
+  font-size: 0.34em;
+  font-weight: 700;
+  letter-spacing: 0.72em;
+  margin-right: -0.72em;
+  color: var(--cyan);
+  text-shadow: 0 0 18px rgba(34, 230, 255, 0.65);
+}
+.logo-main {
+  display: inline-block;
+  padding-right: 0.08em;
+  font-style: italic;
+  transform: skewX(-9deg);
+  background: linear-gradient(180deg, #fff 8%, #ffb3dc 42%, var(--pink) 60%, #7a1cff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 22px rgba(255, 45, 149, 0.55));
+}
+
 .btn {
   position: relative;
   display: inline-block;

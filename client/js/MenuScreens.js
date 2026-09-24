@@ -189,7 +189,6 @@ export function registerMenuScreens(menus, game) {
       return;
     }
     if (e.target.closest('[data-reset]')) {
-      // eslint-disable-next-line no-alert
       if (window.confirm('Reset ALL progress, cars, credits and records? This cannot be undone.')) {
         game.store.reset();
         game.goals.ensureMissions();

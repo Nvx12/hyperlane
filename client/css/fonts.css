@@ -1,0 +1,33 @@
+/* Self-hosted fonts (SIL Open Font License 1.1 — see fonts/OFL-*.txt). Latin subset only. */
+
+@font-face {
+  font-family: 'Orbitron';
+  font-style: normal;
+  font-weight: 400 900; /* variable font */
+  font-display: swap;
+  src: url('../fonts/orbitron-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Rajdhani';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../fonts/rajdhani-500-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Rajdhani';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/rajdhani-600-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Rajdhani';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/rajdhani-700-latin.woff2') format('woff2');
+}

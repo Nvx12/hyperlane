@@ -2,9 +2,12 @@
 // Loading always yields a complete, valid save: unknown/missing fields fall back to defaults,
 // corrupted data is quarantined, and older versions are migrated step by step.
 
-const KEY = 'hyperlane.save';
+import { SAVE_VERSION } from './version.js';
+
+const KEY = 'nightvector.save';
+const PREVIOUS_KEY = 'hyperlane.save'; // same schema, stored under the pre-release name
 const LEGACY_KEY = 'hyperlane.save.v1'; // v1 of the game stored only score/distance/mute
-export const SAVE_VERSION = 1;
+export { SAVE_VERSION };
 
 export function defaultSettings() {
   return {
@@ -123,9 +126,9 @@ export class SaveManager {
   }
 
   load() {
-    let raw = null;
+    let raw;
     try {
-      raw = localStorage.getItem(KEY);
+      raw = localStorage.getItem(KEY) || localStorage.getItem(PREVIOUS_KEY);
     } catch {
       return defaultSave(); // storage blocked: play without persistence
     }

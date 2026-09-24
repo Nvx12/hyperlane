@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "hyperlane",
+      "name": "night-vector",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["server.mjs"],
-      "port": 5173
+      "runtimeArgs": ["--no-warnings=ExperimentalWarning", "server/src/index.js"],
+      "port": 8080
     }
   ]
 }

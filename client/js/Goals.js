@@ -22,7 +22,7 @@ export class LocalDailyProvider {
   getChallenge(key) {
     let challenge = this.cache.get(key);
     if (challenge) return challenge;
-    const rng = createRng(hashString(`hyperlane-daily-${key}`));
+    const rng = createRng(hashString(`nightvector-daily-${key}`));
     const pool = DAILY_GOALS.slice();
     const goals = [];
     while (goals.length < 3 && pool.length) {

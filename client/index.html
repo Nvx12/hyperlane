@@ -4,18 +4,49 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#06030d">
-  <meta name="description" content="Hyperlane — a neon arcade highway racer. Weave through traffic, chain near misses and outrun the police. Runs in your browser.">
-  <title>Hyperlane — Night Highway Racer</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2306030d'/%3E%3Cpath d='M22 56 30 10h4l8 46' fill='none' stroke='%23ff2d95' stroke-width='5'/%3E%3Cpath d='M32 20v6m0 8v6m0 8v6' stroke='%2322e6ff' stroke-width='3'/%3E%3C/svg%3E">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <meta name="color-scheme" content="dark">
+  <title>Night Vector — Neon Highway Racer</title>
+  <meta name="description" content="Night Vector is a neon arcade highway racer. Thread the traffic, chain near misses, outrun the police and climb the leaderboards. Free to play in your browser — no download needed.">
+  <link rel="canonical" href="__PUBLIC_URL__/">
+
+  <!-- Social previews -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Night Vector">
+  <meta property="og:title" content="Night Vector — Neon Highway Racer">
+  <meta property="og:description" content="Thread the traffic. Own the night. A neon arcade racer you can play instantly in your browser.">
+  <meta property="og:url" content="__PUBLIC_URL__/">
+  <meta property="og:image" content="__PUBLIC_URL__/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Night Vector — a sports car racing down a neon-lit night highway">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Night Vector — Neon Highway Racer">
+  <meta name="twitter:description" content="Thread the traffic. Own the night. Play instantly in your browser.">
+  <meta name="twitter:image" content="__PUBLIC_URL__/og-image.png">
+
+  <!-- App / PWA -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Night Vector">
+
+  <!-- Runtime configuration, filled in by the server / build (see server/src/htmlTransform.js) -->
+  <meta name="nv-api-url" content="__API_URL__">
+  <meta name="nv-env" content="__APP_ENV__">
+
+  <link rel="preload" href="fonts/orbitron-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/menus.css">
+  <script src="js/boot.js"></script>
 </head>
 <body>
   <div id="app">
-    <canvas id="game" aria-label="Hyperlane game view"></canvas>
+    <canvas id="game" aria-label="Night Vector game view"></canvas>
 
     <!-- ============================================================ HUD -->
     <div id="hud" class="hud hidden" aria-hidden="true">
@@ -122,7 +153,7 @@
 
     <!-- ============================================================ MENU SHELL -->
     <header id="menu-topbar" class="menu-topbar visible">
-      <div class="brand">HYPER<span>LANE</span></div>
+      <div class="brand">NIGHT<span>VECTOR</span></div>
       <div class="driver">
         <div class="level-badge" id="top-level">1</div>
         <div class="driver-info">
@@ -149,8 +180,8 @@
         <button class="nav-btn" data-nav="settings"><span>Settings</span><small>Audio, graphics, controls</small></button>
       </nav>
       <div class="home-hero">
-        <p class="eyebrow">Night highway racer</p>
-        <h1 class="title">HYPERLANE</h1>
+        <p class="eyebrow">Thread the traffic. Own the night.</p>
+        <h1 class="title logo"><span class="logo-top">NIGHT</span><span class="logo-main">VECTOR</span></h1>
         <div class="home-car">
           <span class="hud-label">Current ride</span>
           <b id="home-car-name">Vireo Hatch</b>
@@ -284,25 +315,14 @@
     <div id="fps" class="fps hidden"></div>
 
     <div id="loading" class="loading" role="status">
-      <div class="loading-brand">HYPER<span>LANE</span></div>
-      <p id="loading-text">Warming up the engine…</p>
-      <noscript><p>Hyperlane needs JavaScript enabled to run.</p></noscript>
+      <div class="loading-brand logo"><span class="logo-top">NIGHT</span><span class="logo-main">VECTOR</span></div>
+      <div class="loading-bar"><i id="loading-bar"></i></div>
+      <p id="loading-text">LOADING 0%</p>
+      <p class="loading-tip" id="loading-tip"></p>
+      <noscript><p>Night Vector needs JavaScript enabled to run.</p></noscript>
     </div>
   </div>
 
-  <script>
-    // If a module fails to load, don't leave the player staring at "Warming up…".
-    window.addEventListener('error', function () {
-      var screen = document.getElementById('loading');
-      if (screen && !screen.classList.contains('done')) {
-        document.getElementById('loading-text').textContent = 'Hyperlane failed to load. Please reload the page.';
-        screen.classList.add('error');
-      }
-    });
-  </script>
   <script type="module" src="js/main.js"></script>
-  <script nomodule>
-    document.getElementById('loading-text').textContent = 'Your browser is too old to run Hyperlane. Please use a current version of Chrome, Firefox, Safari or Edge.';
-  </script>
 </body>
 </html>

@@ -23,6 +23,7 @@ import { SaveManager } from './SaveManager.js';
 import { Progression } from './Progression.js';
 import { resolveCustom } from './data/cosmetics.js';
 import { tipFor, SHOW_CONTROLS_RACES } from './data/tips.js';
+import { ENV } from './env.js';
 import { createSpriteBank, createPlayerSprites, createUnderglowSprite, createBeamSprite } from './Sprites.js';
 
 export const STATE = Object.freeze({
@@ -109,7 +110,8 @@ export class Game {
       if (this.state === STATE.MENU && this.menus.current === 'home') this.menus.open('garage');
     };
     // Developer performance monitor: only with ?debug in the URL, toggled with F.
-    this.debug = new URLSearchParams(location.search).has('debug');
+    // Never available in production builds.
+    this.debug = !ENV.isProduction && new URLSearchParams(location.search).has('debug');
     this.input.onToggleFps = () => {
       if (this.debug) this.ui.setFpsVisible(!this.ui.fpsVisible);
     };
