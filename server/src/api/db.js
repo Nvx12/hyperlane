@@ -61,6 +61,14 @@ const MIGRATIONS = [
       CREATE INDEX events_name_time ON events(name, created_at);
     `,
   },
+  {
+    version: 2,
+    name: 'idempotent race finish',
+    sql: `
+      ALTER TABLE race_sessions ADD COLUMN result_hash TEXT;
+      CREATE INDEX scores_player_time ON scores(player_id, created_at);
+    `,
+  },
 ];
 
 export function openDatabase(path) {

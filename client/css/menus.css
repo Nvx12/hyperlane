@@ -270,6 +270,30 @@
 .ach .xp-bar { margin-top: 6px; }
 .ach.locked b { color: var(--muted); }
 
+/* Leaderboard */
+.lb-periods { margin-left: auto; }
+.lb-cats { padding: 0 22px; border-bottom: 1px solid var(--line); }
+.lb-body { flex: 1; overflow-y: auto; padding: 14px 22px 18px; }
+.lb-note { padding: 28px 8px; text-align: center; font-weight: 600; color: var(--muted); }
+.lb-note b { display: block; margin-bottom: 6px; font-family: var(--font-display); letter-spacing: 0.14em; color: var(--text); }
+.lb-list { list-style: none; margin: 0; padding: 0; }
+.lb-row { display: grid; grid-template-columns: 52px 1fr auto; align-items: center; gap: 12px; padding: 9px 12px; border-bottom: 1px solid var(--line); font-weight: 700; }
+.lb-row .lb-rank { font-family: var(--font-display); color: var(--muted); }
+.lb-row:nth-child(1) .lb-rank { color: var(--amber); }
+.lb-row:nth-child(2) .lb-rank, .lb-row:nth-child(3) .lb-rank { color: var(--cyan); }
+.lb-row .lb-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-row .lb-name small { margin-left: 8px; color: var(--muted); font-weight: 600; }
+.lb-row .lb-value { font-family: var(--font-display); }
+.lb-row.me { background: rgba(255,45,149,0.14); border-left: 3px solid var(--pink); }
+.lb-me { margin-top: 12px; }
+.lb-me .lb-row { border: 1px dashed rgba(255,45,149,0.6); }
+@media (max-width: 760px) {
+  .lb-periods button { padding: 6px 8px; }
+  .lb-cats { padding: 0 8px; }
+  .lb-cats .tab { font-size: 10px; letter-spacing: 0.06em; }
+  .lb-body { padding: 10px 12px; }
+}
+
 /* Profile: tabs in the header, identity card on top */
 .profile-tabs { margin-left: auto; }
 .profile-tabs .tab { flex: none; padding: 8px 14px; }
@@ -313,6 +337,11 @@
 .btn-small:hover { background: rgba(255,51,85,0.15); }
 
 /* ------------------------------------------------------------------ results */
+
+.online-line { margin: 4px 0 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.online-line.pending { opacity: 0.7; }
+.online-line.ranked { color: var(--cyan); }
+.online-line.rejected { color: var(--amber); }
 
 .results-card .screen-title { margin-bottom: 6px; }
 .results-card .btn-row { margin-top: 16px; }

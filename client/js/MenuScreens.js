@@ -106,6 +106,71 @@ export function registerMenuScreens(menus, game) {
       <p class="muted small">Completed missions pay out when a run ends and are replaced with new ones. ${save().stats.missionsCompleted} completed so far.</p>`;
   });
 
+  // ---------------------------------------------------------------- leaderboard
+  const LB_FORMAT = {
+    score: v => fmt(v),
+    distance: v => km(v),
+    speed: v => `${fmt(v)} km/h`,
+    combo: v => `x${v}`,
+  };
+  const carName = id => (CARS.find(c => c.id === id) || { name: '' }).name;
+  const lb = { category: 'score', period: 'week', cache: new Map(), seq: 0 };
+
+  menus.register('leaderboard', () => renderLeaderboard());
+
+  async function renderLeaderboard() {
+    document.querySelectorAll('[data-lb-cat]').forEach(b => b.classList.toggle('active', b.dataset.lbCat === lb.category));
+    document.querySelectorAll('[data-lb-period]').forEach(b => b.classList.toggle('active', b.dataset.lbPeriod === lb.period));
+    const body = document.getElementById('lb-body');
+    const key = `${lb.category}:${lb.period}:${game.players.registered ? game.players.name : ''}`;
+    const cached = lb.cache.get(key);
+    if (cached && Date.now() - cached.at < 15_000) {
+      body.innerHTML = leaderboardHtml(cached.data);
+      return;
+    }
+    if (navigator.onLine === false) {
+      body.innerHTML = '<p class="lb-note"><b>Offline</b>Leaderboards need a connection. Your runs are still saved on this device.</p>';
+      return;
+    }
+    body.innerHTML = '<p class="lb-note">Loading…</p>';
+    const seq = ++lb.seq;
+    const r = await game.api.request('GET', `/leaderboard?category=${lb.category}&period=${lb.period}`, { token: game.players.token });
+    if (seq !== lb.seq || menus.current !== 'leaderboard') return; // superseded by another tab/period
+    if (!r.ok) {
+      if (r.status === 401) game.players.forget();
+      body.innerHTML = r.offline
+        ? '<p class="lb-note"><b>Local only</b>The leaderboard server can\'t be reached right now. Try again in a moment.</p>'
+        : `<p class="lb-note"><b>Unavailable</b>${escapeHtml(r.error.message)}</p>`;
+      return;
+    }
+    lb.cache.set(key, { at: Date.now(), data: r.data });
+    body.innerHTML = leaderboardHtml(r.data);
+  }
+
+  function leaderboardHtml(data) {
+    const f = LB_FORMAT[data.category];
+    const row = (rank, name, value, car, me) => `<li class="lb-row ${me ? 'me' : ''}"><span class="lb-rank">#${rank}</span>
+      <span class="lb-name">${escapeHtml(name)}${car ? `<small>${escapeHtml(carName(car))}</small>` : ''}</span><span class="lb-value">${f(value)}</span></li>`;
+    const join = game.players.registered ? '' : '<p class="lb-note">Create an online profile in <b style="display:inline">Profile</b> to post your runs here.</p>';
+    if (!data.entries.length) {
+      return `<p class="lb-note"><b>No runs yet</b>${data.period === 'day' ? 'Nobody has set a time today — be the first.' : 'Be the first on the board.'}</p>${join}`;
+    }
+    const list = `<ol class="lb-list">${data.entries.map(e => row(e.rank, e.name, e.value, e.car, e.me)).join('')}</ol>`;
+    const inTop = data.entries.some(e => e.me);
+    const mine = data.me && !inTop ? `<ol class="lb-list lb-me">${row(data.me.rank, game.players.name, data.me.value, '', true)}</ol>` : '';
+    return list + mine + join;
+  }
+
+  document.getElementById('screen-leaderboard').addEventListener('click', e => {
+    const cat = e.target.closest('[data-lb-cat]');
+    const period = e.target.closest('[data-lb-period]');
+    if (!cat && !period) return;
+    game.audio.ui('click');
+    if (cat) lb.category = cat.dataset.lbCat;
+    if (period) lb.period = period.dataset.lbPeriod;
+    renderLeaderboard();
+  });
+
   // ---------------------------------------------------------------- profile
   // Online identity card + Records (stats) and Achievements tabs.
   let ptab = 'stats';

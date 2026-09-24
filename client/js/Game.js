@@ -27,6 +27,7 @@ import { ENV } from './env.js';
 import { AppShell } from './AppShell.js';
 import { ApiClient } from './net/ApiClient.js';
 import { PlayerService } from './net/PlayerService.js';
+import { RaceService } from './net/RaceService.js';
 import { createSpriteBank, createPlayerSprites, createUnderglowSprite, createBeamSprite } from './Sprites.js';
 
 export const STATE = Object.freeze({
@@ -105,6 +106,7 @@ export class Game {
     // Optional backend. Only ever used from menus and at run end — never in the frame loop.
     this.api = new ApiClient();
     this.players = new PlayerService(this.api);
+    this.race = new RaceService(this.api, this.players);
     this.api.onStatus(() => this.shell.syncNetwork());
     this.menus = new Menus(this);
     registerMenuScreens(this.menus, this);
@@ -385,6 +387,9 @@ export class Game {
     this.menus.open(screen);
     this.shell.refreshUpdateBanner();
     this.shell.pingServer();
+    this.race.flush().then(n => {
+      if (n) this.ui.toast('Leaderboard', `${n} offline run${n > 1 ? 's' : ''} submitted`, 'unlock');
+    });
   }
 
   startRace() {
@@ -405,6 +410,7 @@ export class Game {
     this.audio.setMusicMode('race');
     this.shell.refreshUpdateBanner();
     this.shell.checkOrientation();
+    this.race.begin(this.car.id, this.selectedEnv); // background request; never blocks the countdown
     this.lastTime = performance.now();
   }
 
@@ -503,7 +509,14 @@ export class Game {
     this.camera.fovOverride = 0;
     this.gameOverAt = performance.now();
     this.ui.setHudVisible(false);
-    this.ui.showResults(this.finishRun());
+    const summary = this.finishRun();
+    this.ui.showResults(summary);
+    this.ui.setOnlineResult(this.players.registered ? 'pending' : null);
+    const runId = this.gameOverAt;
+    summary.online.then(res => {
+      // Ignore late answers once the player has moved on to another run.
+      if (this.state === STATE.GAMEOVER && this.gameOverAt === runId) this.ui.setOnlineResult(res);
+    });
     this.audio.gameOver();
     this.shell.refreshUpdateBanner();
     this.audio.setMusicMode('menu');
@@ -526,6 +539,18 @@ export class Game {
     const save = this.save;
     const run = { ...this.liveRun() };
     if (run.bestMultiplier >= 10 && run.policeEscapes > 0) save.flags.phantom = true;
+
+    // Ranked submission (validated server-side; local rewards never depend on it).
+    const online = this.race.submit({
+      score: run.score,
+      distance: Math.round(run.distance * 10) / 10,
+      topSpeed: Math.round(run.topSpeed * 10) / 10,
+      bestCombo: run.bestMultiplier,
+      durationMs: Math.round(this.runTime * 1000),
+      nearMisses: run.nearMisses,
+      overtakes: run.overtakes,
+      perfectOvertakes: run.perfectOvertakes,
+    });
 
     const beaten = prog.updateRecords(run);
     prog.addLifetimeStats(run, this.car.id, this.runTime);
@@ -553,6 +578,7 @@ export class Game {
     if (levelsGained.length) this.audio.levelUp();
     else if (isRecord('score')) this.audio.record();
     return {
+      online,
       title: this.player.health <= 0 ? 'Wrecked' : 'Run complete',
       score: run.score,
       newBest: isRecord('score'),

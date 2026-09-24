@@ -205,6 +205,7 @@
         <button class="nav-btn nav-play btn-primary" data-nav="play"><span>Play</span><small>Hit the highway</small></button>
         <button class="nav-btn" data-nav="garage"><span>Garage</span><small id="nav-garage-sub">Cars &amp; upgrades</small></button>
         <button class="nav-btn" data-nav="missions"><span>Missions</span><small id="nav-missions-sub">Daily &amp; objectives</small></button>
+        <button class="nav-btn" data-nav="leaderboard"><span>Leaderboard</span><small>Global rankings</small></button>
         <button class="nav-btn" data-nav="profile"><span>Profile</span><small id="nav-profile-sub">Records &amp; achievements</small></button>
         <button class="nav-btn" data-nav="settings"><span>Settings</span><small>Audio, graphics, controls</small></button>
       </nav>
@@ -269,6 +270,27 @@
       </div>
     </section>
 
+    <!-- Leaderboard -->
+    <section id="screen-leaderboard" class="screen panel-screen" aria-label="Leaderboard">
+      <div class="panel">
+        <div class="panel-head">
+          <button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Leaderboard</h2>
+          <div class="seg lb-periods" role="tablist" aria-label="Period">
+            <button data-lb-period="day" role="tab">Today</button>
+            <button data-lb-period="week" role="tab" class="active">This week</button>
+            <button data-lb-period="all" role="tab">All time</button>
+          </div>
+        </div>
+        <div class="tabs lb-cats" role="tablist" aria-label="Category">
+          <button class="tab active" data-lb-cat="score" role="tab">Top score</button>
+          <button class="tab" data-lb-cat="distance" role="tab">Longest run</button>
+          <button class="tab" data-lb-cat="speed" role="tab">Top speed</button>
+          <button class="tab" data-lb-cat="combo" role="tab">Best combo</button>
+        </div>
+        <div class="lb-body" id="lb-body" aria-live="polite"></div>
+      </div>
+    </section>
+
     <!-- Profile: online identity, records & statistics, achievements -->
     <section id="screen-profile" class="screen panel-screen" aria-label="Profile">
       <div class="panel">
@@ -317,6 +339,7 @@
             <span class="hud-label">Final score</span>
             <div class="final-score" id="res-score">0</div>
             <div class="new-best" id="res-newbest">New best score</div>
+            <div class="online-line" id="res-online" role="status" hidden></div>
             <div class="result-stats" id="res-stats"></div>
             <div class="next-up">
               <span class="hud-label">Next up</span>

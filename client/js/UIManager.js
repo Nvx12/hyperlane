@@ -307,6 +307,36 @@ export class UIManager {
 
   // ---------------------------------------------------------------- results
 
+  // Online ranking line under the score. state: hidden | pending | an online result.
+  setOnlineResult(res) {
+    const el = this.$('res-online');
+    el.className = 'online-line';
+    if (!res) {
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
+    let text;
+    if (res === 'pending') {
+      text = 'Submitting to the leaderboard…';
+      el.classList.add('pending');
+    } else if (res.status === 'ranked') {
+      const r = res.ranks;
+      const parts = [r.day && `#${r.day.rank} today`, r.week && `#${r.week.rank} this week`, r.all && `#${r.all.rank} all time`].filter(Boolean);
+      text = `${res.personalBest ? 'Online best! ' : ''}Ranked ${parts.join(' · ')}`;
+      el.classList.add('ranked');
+    } else if (res.status === 'queued') {
+      text = 'Offline — your run will be submitted when you reconnect';
+    } else if (res.status === 'rejected') {
+      text = res.message || 'Not ranked';
+      el.classList.add('rejected');
+    } else {
+      el.hidden = true;
+      return;
+    }
+    el.textContent = text;
+  }
+
   showResults(r) {
     const $ = this.$;
     $('results-title').textContent = r.title;
