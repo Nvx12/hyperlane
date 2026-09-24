@@ -81,7 +81,9 @@ export class Analytics {
       return;
     }
     // Fire and forget: analytics never retries, never blocks, never surfaces errors.
-    this.api.request('POST', '/events', { body, retries: 0, timeout: 5000, keepalive: true });
+    // (No keepalive here: unloads go through sendBeacon above; keepalive fetches show up as
+    // "aborted" in DevTools once Chromium hands them to the browser process.)
+    this.api.request('POST', '/events', { body, retries: 0, timeout: 5000 });
     if (this.queue.length) this.timer = setTimeout(() => this.flush(false), FLUSH_MS);
   }
 }

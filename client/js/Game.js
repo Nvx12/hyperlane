@@ -316,7 +316,10 @@ export class Game {
     this.resizePending = false;
     const w = Math.max(320, window.innerWidth);
     const h = Math.max(240, window.innerHeight);
-    this.renderScale = Math.min(window.devicePixelRatio || 1, this.qualityCap);
+    // High-DPI screens are held to the pixel budget, but never below native (1x) resolution;
+    // sustained slowness beyond that is handled by monitorPerformance().
+    const budget = Math.max(1, Math.sqrt(PERF.MAX_PIXELS / (w * h)));
+    this.renderScale = Math.min(window.devicePixelRatio || 1, this.qualityCap, budget);
     this.canvas.width = Math.round(w * this.renderScale);
     this.canvas.height = Math.round(h * this.renderScale);
     this.canvas.style.width = `${w}px`;

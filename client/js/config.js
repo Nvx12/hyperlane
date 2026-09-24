@@ -120,6 +120,9 @@ export const BEAM = {
 export const PERF = {
   MAX_DPR: 1.5,
   MOBILE_MAX_DPR: 1.25,
+  // Canvas pixel budget (~1080p). Fill rate, not JS, is the limit on integrated GPUs: a
+  // 1920x1080 view at DPR 2 measured 40 fps uncapped vs 60 fps within this budget.
+  MAX_PIXELS: 1920 * 1080 * 1.15,
   MIN_RENDER_SCALE: 0.75,
   MAX_DT: 1 / 20,
   SLOW_FRAME_MS: 21,
