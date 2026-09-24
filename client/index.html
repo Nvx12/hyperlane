@@ -205,8 +205,7 @@
         <button class="nav-btn nav-play btn-primary" data-nav="play"><span>Play</span><small>Hit the highway</small></button>
         <button class="nav-btn" data-nav="garage"><span>Garage</span><small id="nav-garage-sub">Cars &amp; upgrades</small></button>
         <button class="nav-btn" data-nav="missions"><span>Missions</span><small id="nav-missions-sub">Daily &amp; objectives</small></button>
-        <button class="nav-btn" data-nav="achievements"><span>Achievements</span><small id="nav-ach-sub">0 unlocked</small></button>
-        <button class="nav-btn" data-nav="stats"><span>Statistics</span><small>Records &amp; totals</small></button>
+        <button class="nav-btn" data-nav="profile"><span>Profile</span><small id="nav-profile-sub">Records &amp; achievements</small></button>
         <button class="nav-btn" data-nav="settings"><span>Settings</span><small>Audio, graphics, controls</small></button>
       </nav>
       <div class="home-hero">
@@ -270,19 +269,21 @@
       </div>
     </section>
 
-    <!-- Achievements -->
-    <section id="screen-achievements" class="screen panel-screen" aria-label="Achievements">
+    <!-- Profile: online identity, records & statistics, achievements -->
+    <section id="screen-profile" class="screen panel-screen" aria-label="Profile">
       <div class="panel">
-        <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Achievements</h2><span class="panel-count" id="ach-count"></span></div>
-        <div class="ach-grid" id="ach-grid"></div>
-      </div>
-    </section>
-
-    <!-- Statistics -->
-    <section id="screen-stats" class="screen panel-screen" aria-label="Statistics">
-      <div class="panel">
-        <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Statistics</h2></div>
-        <div class="stats-body" id="stats-body"></div>
+        <div class="panel-head">
+          <button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Profile</h2>
+          <div class="tabs profile-tabs" role="tablist">
+            <button class="tab active" data-ptab="stats" role="tab">Records</button>
+            <button class="tab" data-ptab="achievements" role="tab">Achievements <span id="ach-count"></span></button>
+          </div>
+        </div>
+        <div class="stats-body" id="profile-body">
+          <div class="identity-card" id="identity-card"></div>
+          <div id="stats-body"></div>
+          <div class="ach-grid" id="ach-grid" hidden></div>
+        </div>
       </div>
     </section>
 

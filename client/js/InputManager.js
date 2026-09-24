@@ -13,6 +13,9 @@ const KEY_ACTIONS = {
   Space: 'boost',
 };
 
+const isTextField = el => el instanceof HTMLElement
+  && (el.isContentEditable || el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !['range', 'checkbox', 'radio', 'button'].includes(el.type)));
+
 // One set of driving actions (steer / throttle / brake / boost) fed by keyboard, touch and
 // gamepad, plus edge-triggered callbacks for menu actions. The game only reads the getters.
 export class InputManager {
@@ -104,6 +107,11 @@ export class InputManager {
   }
 
   handleKeyDown(e) {
+    // Typing in a text field (racer name) must not steer, mute or open menus.
+    if (isTextField(e.target)) {
+      if (e.code === 'Escape') e.target.blur();
+      return;
+    }
     const action = KEY_ACTIONS[e.code];
     if (action) {
       this.keys[action] = true;

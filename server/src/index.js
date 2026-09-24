@@ -4,18 +4,19 @@ import { resolve } from 'node:path';
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
 import { createApp } from './app.js';
+import { createApi } from './api/index.js';
 
 const config = loadConfig();
 const log = createLogger({ level: config.logLevel, json: config.isProd });
 const { version } = JSON.parse(readFileSync(resolve(config.root, 'package.json'), 'utf8'));
 
+// The game itself never depends on the API: if the database can't open, keep serving the
+// game (offline/local mode) and report "degraded" on /health so the platform can alert.
 let api = null;
 try {
-  const { createApi } = await import('./api/index.js');
   api = await createApi({ config, log, version });
 } catch (err) {
-  if (err.code !== 'ERR_MODULE_NOT_FOUND') throw err;
-  log.warn('API module not present — serving the game only');
+  log.error('API unavailable — serving the game only', { error: err.message });
 }
 
 const server = createServer(createApp({ config, log, api, version }));

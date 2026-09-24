@@ -270,6 +270,31 @@
 .ach .xp-bar { margin-top: 6px; }
 .ach.locked b { color: var(--muted); }
 
+/* Profile: tabs in the header, identity card on top */
+.profile-tabs { margin-left: auto; }
+.profile-tabs .tab { flex: none; padding: 8px 14px; }
+.profile-tabs #ach-count { color: var(--amber); margin-left: 4px; }
+#profile-body .ach-grid { overflow: visible; padding: 0; }
+.identity-card {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding: 14px 16px; margin-bottom: 22px;
+  background: linear-gradient(120deg, rgba(34,230,255,0.10), rgba(155,61,255,0.08)); border: 1px solid rgba(34,230,255,0.35);
+}
+.identity-card .id-main { flex: 1 1 220px; min-width: 0; }
+.identity-card .id-name { display: block; font-family: var(--font-display); font-size: 20px; letter-spacing: 0.08em; overflow-wrap: anywhere; }
+.identity-card p { font-size: 13px; font-weight: 600; color: var(--muted); }
+.identity-card form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.identity-card input[type="text"] {
+  width: 190px; padding: 9px 12px; font: 700 15px var(--font-ui); letter-spacing: 0.04em; color: var(--text);
+  background: rgba(6,3,13,0.7); border: 1px solid var(--line); outline: none;
+}
+.identity-card input[type="text"]:focus { border-color: var(--cyan); }
+.identity-card .btn-small.ghost { border-color: rgba(34,230,255,0.5); color: var(--cyan); }
+.identity-card .btn-small.ghost:hover { background: rgba(34,230,255,0.12); }
+.identity-card .btn-small.link { border-color: transparent; color: var(--muted); }
+.identity-card .id-msg { flex-basis: 100%; font-size: 13px; font-weight: 700; color: var(--red); }
+.identity-card .id-msg:empty { display: none; }
+.identity-card .id-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-bottom: 26px; }
 .stat-tile { padding: 12px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--line); }
 .stat-tile b { display: block; margin-top: 4px; font-family: var(--font-display); font-size: 20px; }

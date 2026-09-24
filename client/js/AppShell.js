@@ -21,7 +21,10 @@ export class AppShell {
       },
     });
     fullscreen.onChange(() => this.syncFullscreen());
-    window.addEventListener('online', () => this.syncNetwork());
+    window.addEventListener('online', () => {
+      this.syncNetwork();
+      if (!this.game.isRaceActive()) this.pingServer(true);
+    });
     window.addEventListener('offline', () => this.syncNetwork());
   }
 
@@ -38,6 +41,7 @@ export class AppShell {
     this.syncFullscreen();
     this.syncNetwork();
     this.pwa.register();
+    this.pingServer(true);
   }
 
   on(fn) {
@@ -52,8 +56,22 @@ export class AppShell {
     return navigator.onLine !== false;
   }
 
+  // Cheap reachability ping from menus (never during a race), at most every 30 s while down.
+  pingServer(force = false) {
+    const api = this.game.api;
+    const t = Date.now();
+    if (!api || (!force && (api.reachable || t - (this.lastPing || 0) < 30_000))) return;
+    this.lastPing = t;
+    api.request('GET', '/status', { retries: 0, timeout: 4000 });
+  }
+
+  // OFFLINE: no network at all. LOCAL ONLY: network is up but the game server isn't
+  // answering — everything still works, runs just aren't ranked.
   syncNetwork() {
-    this.netChip.hidden = this.online;
+    const apiDown = Boolean(this.game.api && !this.game.api.reachable);
+    this.netChip.hidden = this.online && !apiDown;
+    this.netChip.textContent = this.online ? 'Local only' : 'Offline';
+    this.netChip.title = this.online ? 'Leaderboard server unreachable — progress is saved on this device' : 'No connection — progress is saved on this device';
     this.emit('network', this.online);
   }
 

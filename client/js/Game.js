@@ -25,6 +25,8 @@ import { resolveCustom } from './data/cosmetics.js';
 import { tipFor, SHOW_CONTROLS_RACES } from './data/tips.js';
 import { ENV } from './env.js';
 import { AppShell } from './AppShell.js';
+import { ApiClient } from './net/ApiClient.js';
+import { PlayerService } from './net/PlayerService.js';
 import { createSpriteBank, createPlayerSprites, createUnderglowSprite, createBeamSprite } from './Sprites.js';
 
 export const STATE = Object.freeze({
@@ -100,6 +102,10 @@ export class Game {
       uiSound: kind => this.audio.ui(kind),
     });
     this.shell = new AppShell(this);
+    // Optional backend. Only ever used from menus and at run end — never in the frame loop.
+    this.api = new ApiClient();
+    this.players = new PlayerService(this.api);
+    this.api.onStatus(() => this.shell.syncNetwork());
     this.menus = new Menus(this);
     registerMenuScreens(this.menus, this);
 
@@ -378,6 +384,7 @@ export class Game {
     this.hideIntro();
     this.menus.open(screen);
     this.shell.refreshUpdateBanner();
+    this.shell.pingServer();
   }
 
   startRace() {

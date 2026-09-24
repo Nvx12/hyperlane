@@ -19,9 +19,12 @@ export function createApp({ config, log, api = null, version }) {
     const path = url.pathname;
     try {
       if (path === '/health') {
-        const dbOk = api ? api.healthy() : true;
-        return sendJson(res, dbOk ? 200 : 503, {
+        // Liveness: 200 while the process serves requests. The game works without the
+        // database, so a DB problem reports "degraded" instead of failing the check.
+        const dbOk = Boolean(api && api.healthy());
+        return sendJson(res, 200, {
           status: dbOk ? 'ok' : 'degraded',
+          database: dbOk ? 'ok' : 'unavailable',
           version,
           uptime: Math.round((Date.now() - startedAt) / 1000),
         }, { 'Cache-Control': 'no-store' });

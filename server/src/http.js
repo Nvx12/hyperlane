@@ -42,12 +42,18 @@ export function readJson(req, maxBytes) {
       return;
     }
     let size = 0;
+    let tooLarge = false;
     const chunks = [];
     req.on('data', chunk => {
       size += chunk.length;
       if (size > maxBytes) {
-        reject(new HttpError(413, 'payload_too_large', 'Request body too large.'));
-        req.destroy();
+        // Keep draining (discarding) so the 413 response can still be delivered; the
+        // server's requestTimeout bounds how long a client can keep streaming.
+        if (!tooLarge) {
+          tooLarge = true;
+          chunks.length = 0;
+          reject(new HttpError(413, 'payload_too_large', 'Request body too large.'));
+        }
         return;
       }
       chunks.push(chunk);

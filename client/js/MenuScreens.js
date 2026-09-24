@@ -2,6 +2,7 @@ import { ENVIRONMENTS } from './data/environments.js';
 import { OBJECTIVES } from './data/missions.js';
 import { CARS } from './balance.js';
 import { escapeHtml } from './UIManager.js';
+import { checkName } from './net/PlayerService.js';
 
 const fmt = n => Math.floor(n).toLocaleString('en-US');
 const km = m => `${(m / 1000).toFixed(1)} km`;
@@ -11,7 +12,7 @@ const duration = s => {
   return h ? `${h}h ${m}m` : `${m}m ${Math.floor(s % 60)}s`;
 };
 
-// Play (route select), Missions, Achievements, Statistics and Settings screens.
+// Play (route select), Missions, Profile (identity, records, achievements) and Settings screens.
 // Rendered on open / on change only — never per frame.
 export function registerMenuScreens(menus, game) {
   const prog = () => game.progression;
@@ -31,7 +32,8 @@ export function registerMenuScreens(menus, game) {
     garageSub.textContent = up && up.affordable ? `Upgrade ready: ${up.label}` : `${unlocked} / ${CARS.length} cars unlocked`;
     garageSub.classList.toggle('ready', Boolean(up && up.affordable));
     const ach = Object.keys(save().achievements).length;
-    document.getElementById('nav-ach-sub').textContent = `${ach} unlocked`;
+    document.getElementById('nav-profile-sub').textContent = game.players.registered
+      ? `${game.players.name} · ${ach} achievements` : `Records · ${ach} achievements`;
     const ready = save().missions.active.filter(m => game.goals.missionValue(m, null) >= m.target).length;
     document.getElementById('nav-missions-sub').textContent = ready ? `${ready} ready to claim` : 'Daily & objectives';
   };
@@ -104,21 +106,123 @@ export function registerMenuScreens(menus, game) {
       <p class="muted small">Completed missions pay out when a run ends and are replaced with new ones. ${save().stats.missionsCompleted} completed so far.</p>`;
   });
 
-  // ---------------------------------------------------------------- achievements
-  menus.register('achievements', () => {
+  // ---------------------------------------------------------------- profile
+  // Online identity card + Records (stats) and Achievements tabs.
+  let ptab = 'stats';
+  let idMode = 'view'; // view | rename
+  let idMessage = '';
+
+  menus.register('profile', () => {
+    renderIdentity();
     const list = game.goals.achievementList();
-    const unlocked = list.filter(a => a.unlocked).length;
-    document.getElementById('ach-count').textContent = `${unlocked} / ${list.length}`;
+    document.getElementById('ach-count').textContent = `${list.filter(a => a.unlocked).length}/${list.length}`;
+    document.querySelectorAll('[data-ptab]').forEach(t => t.classList.toggle('active', t.dataset.ptab === ptab));
+    document.getElementById('stats-body').hidden = ptab !== 'stats';
+    document.getElementById('ach-grid').hidden = ptab !== 'achievements';
+    if (ptab === 'stats') renderStats();
+    else renderAchievements(list);
+    // Pull server-side bests in the background; re-render only the card when they arrive.
+    if (game.players.registered && !game.players.busy) {
+      game.players.refresh().then(r => {
+        if (!r.ok && r.message && !r.offline) idMessage = r.message; // offline shows in the card label
+        if (menus.current === 'profile') renderIdentity();
+      });
+    }
+  });
+
+  function renderIdentity() {
+    const players = game.players;
+    const card = document.getElementById('identity-card');
+    const online = game.api.online;
+    const msg = `<p class="id-msg" role="alert">${escapeHtml(idMessage)}</p>`;
+    const nameForm = (label, value) => `<form data-id-form novalidate>
+        <input type="text" name="name" maxlength="16" minlength="3" required autocomplete="nickname" spellcheck="false"
+          placeholder="Racer name" value="${escapeHtml(value)}" aria-label="Racer name" ${online ? '' : 'disabled'}>
+        <button class="btn-small ghost" type="submit" ${online ? '' : 'disabled'}>${label}</button>
+        ${players.registered ? '<button class="btn-small link" type="button" data-id-act="cancel">Cancel</button>' : ''}
+      </form>`;
+
+    if (!players.registered) {
+      card.innerHTML = `<div class="id-main"><span class="hud-label">Race online</span>
+          <p>${online ? 'Pick a racer name to post your runs to the global leaderboards. Only this name is shared — no email, no account.'
+    : 'Offline — you can create an online profile when you are connected. Your progress is always saved on this device.'}</p></div>
+        ${nameForm('Create profile', '')}${msg}`;
+      return;
+    }
+    if (idMode === 'rename') {
+      card.innerHTML = `<div class="id-main"><span class="hud-label">Change racer name</span><p>Your name appears on the leaderboards.</p></div>${nameForm('Save', players.name)}${msg}`;
+      card.querySelector('input').focus();
+      return;
+    }
+    const b = players.profile && players.profile.best;
+    const best = b ? `Online best ${fmt(b.score)} · ${km(b.distance)} · ${fmt(b.speed)} km/h · x${b.combo}` : 'No ranked runs yet — finish a race while online.';
+    card.innerHTML = `<div class="id-main"><span class="hud-label">Online profile${online ? '' : ' · offline'}</span>
+        <b class="id-name">${escapeHtml(players.name)}</b><p>${escapeHtml(best)}</p></div>
+      <div class="id-actions">
+        <button class="btn-small ghost" data-id-act="rename" ${online ? '' : 'disabled'}>Rename</button>
+        <button class="btn-small" data-id-act="delete" ${online ? '' : 'disabled'}>Delete online profile</button>
+      </div>${msg}`;
+  }
+
+  const profileBody = document.getElementById('profile-body');
+  profileBody.addEventListener('submit', async e => {
+    const form = e.target.closest('[data-id-form]');
+    if (!form) return;
+    e.preventDefault();
+    const name = form.elements.name.value;
+    const check = checkName(name);
+    if (!check.ok) {
+      idMessage = check.message;
+      renderIdentity();
+      return;
+    }
+    game.audio.ui('click');
+    idMessage = '';
+    form.querySelectorAll('input, button').forEach(el => { el.disabled = true; });
+    const wasRegistered = game.players.registered;
+    const r = wasRegistered ? await game.players.rename(name) : await game.players.create(name);
+    if (r.ok) {
+      idMode = 'view';
+      game.ui.toast('Online profile', `Racing as ${game.players.name}`, 'unlock');
+      game.shell.emit('profile', { action: wasRegistered ? 'renamed' : 'created' });
+    } else {
+      idMessage = r.message;
+    }
+    if (menus.current === 'profile') renderIdentity();
+  });
+  profileBody.addEventListener('click', async e => {
+    const act = e.target.closest('[data-id-act]');
+    if (!act) return;
+    game.audio.ui('click');
+    idMessage = '';
+    if (act.dataset.idAct === 'rename') idMode = 'rename';
+    else if (act.dataset.idAct === 'cancel') idMode = 'view';
+    else if (act.dataset.idAct === 'delete') {
+      if (!window.confirm('Delete your online profile? Your leaderboard entries are removed. Progress on this device is kept.')) return;
+      const r = await game.players.remove();
+      if (!r.ok) idMessage = r.message;
+      else game.ui.toast('Online profile deleted', 'Leaderboard entries removed', 'mission');
+    }
+    renderIdentity();
+  });
+  document.querySelector('.profile-tabs').addEventListener('click', e => {
+    const tab = e.target.closest('[data-ptab]');
+    if (!tab) return;
+    game.audio.ui('click');
+    ptab = tab.dataset.ptab;
+    menus.renderers.profile();
+  });
+
+  function renderAchievements(list) {
     document.getElementById('ach-grid').innerHTML = list.map(a => {
       const secret = a.hidden && !a.unlocked;
       return `<div class="ach ${a.unlocked ? 'unlocked' : 'locked'}"><span class="ach-icon">${a.unlocked ? a.icon : secret ? '?' : a.icon}</span>
         <div><b>${secret ? '???' : escapeHtml(a.name)}</b><p>${secret ? 'Hidden achievement' : escapeHtml(a.desc)}</p>
         ${a.unlocked ? `<p class="small" style="color:var(--green)">Unlocked · +${a.reward} CR</p>` : secret ? '' : `<div class="xp-bar"><i style="transform:scaleX(${a.progress})"></i></div>`}</div></div>`;
     }).join('');
-  });
+  }
 
-  // ---------------------------------------------------------------- statistics
-  menus.register('stats', () => {
+  function renderStats() {
     const s = save().stats;
     const r = save().records;
     const fav = prog().favoriteCar();
@@ -138,7 +242,7 @@ export function registerMenuScreens(menus, game) {
         ${tile('Best combo', `x${r.combo}`)}${tile('Most near misses', fmt(r.nearMisses))}${tile('Most overtakes', fmt(r.overtakes))}
         ${tile('Longest chase', `${fmt(r.chase)} s`)}${tile('Clean streak', km(r.cleanDistance))}
       </div>`;
-  });
+  }
 
   // ---------------------------------------------------------------- settings
   const SLIDERS = [['master', 'Master volume'], ['music', 'Music volume'], ['sfx', 'Effects volume'], ['engine', 'Engine volume']];
