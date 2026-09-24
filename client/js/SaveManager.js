@@ -20,6 +20,7 @@ export function defaultSettings() {
     shake: 1, // 0 | 0.5 | 1
     quality: 'high', // low | medium | high
     touch: 'auto', // auto | on | off
+    ghost: true, // personal-best ghost car
   };
 }
 

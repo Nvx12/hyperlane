@@ -28,6 +28,8 @@ import { AppShell } from './AppShell.js';
 import { ApiClient } from './net/ApiClient.js';
 import { PlayerService } from './net/PlayerService.js';
 import { RaceService } from './net/RaceService.js';
+import { Ghost } from './Ghost.js';
+import { takeChallengeFromUrl, shareRun } from './Share.js';
 import { createSpriteBank, createPlayerSprites, createUnderglowSprite, createBeamSprite } from './Sprites.js';
 
 export const STATE = Object.freeze({
@@ -100,6 +102,7 @@ export class Game {
       fullscreen: () => this.shell.toggleFullscreen(),
       install: () => this.shell.install(),
       update: () => this.shell.applyUpdate(),
+      share: () => this.shareLastRun(),
       uiSound: kind => this.audio.ui(kind),
     });
     this.shell = new AppShell(this);
@@ -107,6 +110,9 @@ export class Game {
     this.api = new ApiClient();
     this.players = new PlayerService(this.api);
     this.race = new RaceService(this.api, this.players);
+    this.ghost = new Ghost();
+    this.challenge = takeChallengeFromUrl(); // { name, score, distance, env, accepted } | null
+    this.lastRun = null;
     this.api.onStatus(() => this.shell.syncNetwork());
     this.menus = new Menus(this);
     registerMenuScreens(this.menus, this);
@@ -406,11 +412,15 @@ export class Game {
     this.ui.setHudVisible(true, true);
     this.ui.setMissionTracker(this.goals.trackerItems(null));
     this.ui.peekMissions(true);
-    this.ui.showRaceIntro(this.save.stats.races < SHOW_CONTROLS_RACES, tipFor(this.save.stats.races));
+    const ch = this.challenge && this.challenge.accepted ? this.challenge : null;
+    this.ui.showRaceIntro(this.save.stats.races < SHOW_CONTROLS_RACES,
+      ch ? `Challenge: beat ${ch.name}'s ${ch.score.toLocaleString('en-US')}` : tipFor(this.save.stats.races));
     this.audio.setMusicMode('race');
     this.shell.refreshUpdateBanner();
     this.shell.checkOrientation();
     this.race.begin(this.car.id, this.selectedEnv); // background request; never blocks the countdown
+    this.ghost.enabled = this.save.settings.ghost;
+    this.ghost.startRun();
     this.lastTime = performance.now();
   }
 
@@ -436,6 +446,31 @@ export class Game {
     this.introTimer = 0;
     this.ui.hideRaceIntro();
     this.ui.peekMissions(false);
+  }
+
+  async shareLastRun() {
+    if (!this.lastRun) return;
+    const { result, text, url } = await shareRun({ name: this.players.registered ? this.players.name : '', ...this.lastRun });
+    let outcome = result;
+    if (result === 'copied') {
+      this.ui.toast('Link copied', 'Send it to a friend to challenge them', 'unlock');
+    } else if (result === 'failed') {
+      // Clipboard API blocked (embedded browsers, strict settings): show the link to copy by hand.
+      if (this.ui.showShareFallback(`${text} ${url}`)) {
+        outcome = 'copied';
+        this.ui.toast('Link copied', 'Send it to a friend to challenge them', 'unlock');
+      }
+    }
+    this.shell.emit('share', { result: outcome });
+  }
+
+  acceptChallenge() {
+    const ch = this.challenge;
+    if (!ch) return;
+    ch.accepted = true;
+    // Race the same route when it's unlocked; otherwise the current one (score is score).
+    if (getEnvironment(ch.env).level <= this.save.level) this.selectedEnv = ch.env;
+    this.startRace();
   }
 
   toastRunSummary(summary) {
@@ -556,6 +591,20 @@ export class Game {
     prog.addLifetimeStats(run, this.car.id, this.runTime);
     const events = [];
     for (const car of prog.checkUnlocks()) events.push(['unlock', `NEW CAR UNLOCKED · ${car.name}`]);
+    this.lastRun = { score: run.score, distance: run.distance, topSpeed: run.topSpeed, combo: run.bestMultiplier, env: this.selectedEnv };
+    const ch = this.challenge;
+    if (ch && ch.accepted) {
+      if (run.score > ch.score) {
+        events.unshift(['unlock', `CHALLENGE WON · you beat ${ch.name}'s ${ch.score.toLocaleString('en-US')}`]);
+        this.challenge = null;
+      } else {
+        events.push(['mission', `Challenge · ${(ch.score - run.score).toLocaleString('en-US')} short of ${ch.name}`]);
+      }
+    }
+    const hadGhost = Boolean(this.ghost.best);
+    if (this.ghost.finishRun(run.score, this.car.id) && hadGhost && this.ghost.enabled) {
+      events.push(['unlock', 'You beat your ghost — this run is the new one']);
+    }
 
     const rewards = prog.runRewards(run);
     const goals = this.goals.settle(run);
@@ -682,6 +731,7 @@ export class Game {
     }
     if (this.state === STATE.PLAYING) {
       this.skills.updateScoring(sim, traveled, this.events.scoreBonus);
+      this.ghost.record(this.runTime, this.score.distance, p.x);
       this.updateGoals(dt);
     }
     this.skills.comboFeedback();
@@ -999,6 +1049,10 @@ export class Game {
     const pickups = this.pickups.pool;
     for (let i = 0; i < pickups.length; i++) if (pickups[i].active) list.push(pickups[i]);
     list.push(this.player);
+    if (this.state === STATE.PLAYING || this.state === STATE.CRASHING) {
+      const ghost = this.ghost.place(this.runTime, this.score.distance);
+      if (ghost) list.push(ghost);
+    }
     list.sort(sortBackToFront);
 
     const cam = this.camera;
@@ -1006,8 +1060,28 @@ export class Game {
       const e = list[i];
       if (e.kind === 'vehicle') this.traffic.drawVehicle(ctx, e, cam, this.road);
       else if (e.kind === 'pickup') this.pickups.draw(ctx, e, cam, this.road);
+      else if (e.kind === 'ghost') this.drawGhost(ctx, e);
       else this.drawPlayer(ctx);
     }
+  }
+
+  // Personal-best ghost: the player's own car sprite, translucent and additive. Fades out
+  // when it's right on top of the player so it never hides the real car.
+  drawGhost(ctx, g) {
+    const cam = this.camera;
+    const rear = g.sortZ;
+    const s = cam.focal / rear;
+    const sprite = this.bank.player.normal;
+    const k = s / sprite.ppm;
+    const sx = cam.cx + (g.x + this.road.offsetAt(rear) - cam.x) * s;
+    const sy = cam.horizonY + CAMERA.HEIGHT * s;
+    const near = clamp(Math.abs(g.ahead) / 6, 0, 1);
+    const far = rear > this.road.fadeStart ? Math.max(0, 1 - (rear - this.road.fadeStart) / (ROAD.DRAW_DISTANCE - this.road.fadeStart)) : 1;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.32 * near * far;
+    ctx.drawImage(sprite.canvas, sx - sprite.anchorX * k, sy - sprite.anchorY * k, sprite.canvas.width * k, sprite.canvas.height * k);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
   }
 
   drawPlayer(ctx) {

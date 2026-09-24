@@ -217,6 +217,7 @@
           <b id="home-car-name">Vireo Hatch</b>
           <small id="home-car-class">Starter hatchback</small>
         </div>
+        <div class="home-challenge" id="home-challenge" hidden></div>
         <div class="home-daily" id="home-daily"></div>
       </div>
       <p class="menu-hint"><kbd>Enter</kbd> Play · <kbd>G</kbd> Garage · <kbd>Esc</kbd> Back</p>
@@ -359,8 +360,13 @@
             <ul class="result-events" id="res-events"></ul>
           </div>
         </div>
+        <div class="share-fallback" id="share-fallback" hidden>
+          <label for="share-link">Copy this link to challenge a friend</label>
+          <input type="text" id="share-link" readonly spellcheck="false">
+        </div>
         <div class="btn-row">
           <button class="btn btn-primary" data-action="restart">Race again</button>
+          <button class="btn btn-ghost" data-action="share">Share &amp; challenge</button>
           <button class="btn btn-ghost" data-action="garage">Garage</button>
           <button class="btn btn-ghost" data-action="menu">Main Menu</button>
         </div>

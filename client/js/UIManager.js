@@ -337,8 +337,25 @@ export class UIManager {
     el.textContent = text;
   }
 
+  // Shows the share text in a selectable field and tries the legacy copy command.
+  // Returns true if the text reached the clipboard.
+  showShareFallback(text) {
+    const box = this.$('share-fallback');
+    const input = this.$('share-link');
+    box.hidden = false;
+    input.value = text;
+    input.focus({ preventScroll: true });
+    input.select();
+    try {
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    }
+  }
+
   showResults(r) {
     const $ = this.$;
+    $('share-fallback').hidden = true;
     $('results-title').textContent = r.title;
     $('res-score').textContent = this.format(r.score);
     $('res-newbest').classList.toggle('visible', r.newBest);

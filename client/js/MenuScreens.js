@@ -20,6 +20,16 @@ export function registerMenuScreens(menus, game) {
 
   // ---------------------------------------------------------------- home: daily card
   menus.onHome = () => {
+    const ch = game.challenge;
+    const chEl = document.getElementById('home-challenge');
+    chEl.hidden = !ch;
+    if (ch) {
+      const env = ENVIRONMENTS.find(e => e.id === ch.env);
+      chEl.innerHTML = `<div class="daily-head"><b>CHALLENGE</b><span class="muted small">${ch.accepted ? 'In progress' : 'From a shared link'}</span></div>
+        <p><b>${escapeHtml(ch.name)}</b> scored <b>${fmt(ch.score)}</b> on ${escapeHtml(env ? env.name : 'the highway')}. Beat it.</p>
+        <div class="challenge-actions"><button class="btn-small ghost" data-challenge="accept">${ch.accepted ? 'Try again' : 'Accept'}</button>
+        <button class="btn-small link" data-challenge="dismiss">Dismiss</button></div>`;
+    }
     const daily = game.goals.daily();
     const d = save().daily;
     const done = daily.goals.filter(g => game.goals.dailyValue(g, null) >= g.target).length;
@@ -37,6 +47,18 @@ export function registerMenuScreens(menus, game) {
     const ready = save().missions.active.filter(m => game.goals.missionValue(m, null) >= m.target).length;
     document.getElementById('nav-missions-sub').textContent = ready ? `${ready} ready to claim` : 'Daily & objectives';
   };
+
+  document.getElementById('home-challenge').addEventListener('click', e => {
+    const btn = e.target.closest('[data-challenge]');
+    if (!btn) return;
+    game.audio.ui('click');
+    if (btn.dataset.challenge === 'accept') {
+      game.acceptChallenge();
+    } else {
+      game.challenge = null;
+      menus.onHome();
+    }
+  });
 
   function dailyGoalHtml(g) {
     const v = game.goals.dailyValue(g, null);
@@ -316,6 +338,7 @@ export function registerMenuScreens(menus, game) {
     shake: { label: 'Screen shake', options: [[0, 'Off'], [0.5, 'Subtle'], [1, 'Full']] },
     touch: { label: 'Touch controls', options: [['auto', 'Auto'], ['on', 'On'], ['off', 'Off']] },
     musicEnabled: { label: 'Music', options: [[true, 'On'], [false, 'Off']] },
+    ghost: { label: 'Best-run ghost', options: [[true, 'On'], [false, 'Off']] },
   };
 
   menus.register('settings', () => {
@@ -332,7 +355,7 @@ export function registerMenuScreens(menus, game) {
         ${seg('musicEnabled')}
       </div>
       <h3 class="section-title">Graphics &amp; controls</h3>
-      <div class="settings-grid">${seg('quality')}${seg('shake')}${seg('touch')}</div>
+      <div class="settings-grid">${seg('quality')}${seg('shake')}${seg('touch')}${seg('ghost')}</div>
       <p class="muted small" style="margin-top:14px">Graphics quality only changes visual detail — gameplay is identical at every setting.</p>
       <div class="danger-zone"><button class="btn-small" data-reset="1">Reset all progress</button></div>`;
   });
@@ -360,6 +383,7 @@ export function registerMenuScreens(menus, game) {
     if (e.target.closest('[data-reset]')) {
       if (window.confirm('Reset ALL progress, cars, credits and records? This cannot be undone.')) {
         game.store.reset();
+        game.ghost.clear();
         game.goals.ensureMissions();
         game.applySelectedCar();
         game.applySettings();

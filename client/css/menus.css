@@ -270,6 +270,15 @@
 .ach .xp-bar { margin-top: 6px; }
 .ach.locked b { color: var(--muted); }
 
+/* Challenge card (from a shared link) */
+.home-challenge { padding: 12px 14px; margin: 12px 0; text-align: left; background: linear-gradient(120deg, rgba(255,45,149,0.16), rgba(155,61,255,0.1)); border: 1px solid rgba(255,45,149,0.5); }
+.home-challenge .daily-head b { color: var(--pink); }
+.home-challenge p { margin: 6px 0 10px; font-weight: 600; }
+.home-challenge .challenge-actions { display: flex; gap: 8px; }
+.btn-small.ghost { border-color: rgba(34,230,255,0.5); color: var(--cyan); }
+.btn-small.ghost:hover { background: rgba(34,230,255,0.12); }
+.btn-small.link { border-color: transparent; color: var(--muted); }
+
 /* Leaderboard */
 .lb-periods { margin-left: auto; }
 .lb-cats { padding: 0 22px; border-bottom: 1px solid var(--line); }
@@ -338,6 +347,9 @@
 
 /* ------------------------------------------------------------------ results */
 
+.share-fallback { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+.share-fallback label { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cyan); }
+.share-fallback input { width: 100%; padding: 9px 12px; font: 600 14px var(--font-ui); color: var(--text); background: rgba(6,3,13,0.7); border: 1px solid rgba(34,230,255,0.5); outline: none; }
 .online-line { margin: 4px 0 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .online-line.pending { opacity: 0.7; }
 .online-line.ranked { color: var(--cyan); }
