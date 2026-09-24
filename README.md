@@ -8,6 +8,13 @@ An arcade endless-highway racer for the browser. Weave through traffic across fi
 - **Server:** one small Node.js process with zero runtime dependencies. It serves the game and a JSON API, stores data in SQLite (`node:sqlite`), and runs in a single Docker container.
 - **The game never needs the server.** Without it you still get the full game with local progress; only leaderboards and online profiles need a connection.
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Main menu](docs/screenshots/menu.jpg) | ![Racing at a x5 combo](docs/screenshots/race.jpg) |
+| ![Results screen](docs/screenshots/results.jpg) | ![Garage](docs/screenshots/garage.jpg) |
+
 ## Quick start
 
 Requires **Node.js 22.13+** (24 recommended).
@@ -245,6 +252,21 @@ The image:
 - **Runtime:** runs as the non-root `node` user with no npm dependencies. The data volume is at `/data`, and the container can run with a read-only root filesystem (compose does this).
 - **Health:** a `HEALTHCHECK` polls `/health`.
 - **Shutdown:** on SIGTERM the server stops accepting connections, finishes in-flight requests, closes the database, and exits within 10 s.
+- **Verified:** the image was built from a fresh clone (59 MB, about 12 s) and ran with a read-only root filesystem. It became healthy in about 8 s, served the game and API, and `docker stop` exited 0. Players and leaderboard entries survived a container restart.
+
+Without Docker, on any host with Node 22.13+:
+
+```bash
+npm ci --omit=dev
+```
+
+```bash
+npm run build
+```
+
+```bash
+APP_ENV=production PUBLIC_URL=https://your.domain DATABASE_PATH=/var/lib/nightvector/nightvector.db npm start
+```
 
 Put a TLS-terminating reverse proxy in front (Caddy, nginx or a platform load balancer), set `PUBLIC_URL=https://…` and `TRUST_PROXY=true`, and back up the `/data` volume. SQLite in WAL mode can be backed up live with `sqlite3 nightvector.db ".backup backup.db"`.
 
@@ -265,11 +287,20 @@ Put a TLS-terminating reverse proxy in front (Caddy, nginx or a platform load ba
 - **No per-frame allocations** in hot paths: traffic, pickups, particles, rain and floating text all use pools or typed arrays.
 - **Batched rendering:** each road layer is one batched path fill; sprites and backdrops are pre-rendered and cached.
 - **HUD:** updates 15 times a second and only writes values that changed.
-- **Auto-scaling:** sustained frame drops reduce effects detail first, then render resolution. Phones are capped at 1.25× pixel density.
-- **Measured:**
-  - About 3.5 ms per update+render in desktop Chromium, and 5.7 ms in headless software rendering. The E2E budget is 12 ms.
-  - The JS heap stayed flat at 9.5 MB across 33 consecutive races.
-  - Release payload is 438 KB gzipped (brotli is smaller).
+- **Pixel budget:** high-DPI screens render at most ~1080p-equivalent pixels (never below native 1×), and phones at most 1.25× density. On integrated GPUs the limit is fill rate, not JavaScript.
+- **Auto-scaling:** sustained frame drops reduce effects detail first, then render resolution.
+- **Measured** in Chromium on an AMD Radeon integrated GPU, in the worst case (max difficulty, heavy traffic, a police chase, a storm and continuous boost at once):
+
+  | Screen | FPS | Frames over 20 ms (12 s) |
+  |---|---|---|
+  | 1920×1080 @1× | 60 | 0 |
+  | 1920×1080 @2× (4K / retina) | 59.8 | 3 |
+  | 1366×768 @1× | 60 | 0 |
+  | 1280×720 @1× | 60 | 0 |
+  | Phone landscape 915×412 @2.6× | 60 | 0 |
+
+- **Stability:** 10 play → crash → restart cycles held 60 FPS, with a constant listener count, 2 active intervals, a single AudioContext and a heap of about 4 MB. The heap stayed flat at 9.5 MB over 33 races when forced to garbage-collect.
+- **Payload:** the release is 438 KB gzipped (brotli is smaller). The Docker image is 59 MB.
 
 ## Known limitations
 
@@ -278,7 +309,7 @@ Put a TLS-terminating reverse proxy in front (Caddy, nginx or a platform load ba
 - Display-name screening is a short word list, not full moderation; the `flagged` column is the manual tool.
 - The server is single-instance: rate limits live in memory, and SQLite runs on one volume.
 - Touch and controller support were tested in emulation (Chromium device emulation and a simulated standard gamepad), not on physical devices.
-- The Docker image and SIGTERM shutdown are verified in CI, not on the development machine.
+- Verified browsers: Chromium, desktop and emulated mobile. Safari and Firefox have not been tested.
 
 ## Licenses
 
