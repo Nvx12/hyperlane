@@ -94,6 +94,7 @@ export class UIManager {
 
   setHudVisible(visible, intro = false) {
     this.hudVisible = visible;
+    document.body.classList.toggle('in-race', visible);
     this.el.hud.classList.toggle('hidden', !visible);
     this.el.hud.classList.toggle('intro', visible && intro);
     this.updateTouchVisibility();
@@ -120,8 +121,10 @@ export class UIManager {
   }
 
   updateTouchVisibility() {
-    const show = this.hudVisible && (this.touchMode === 'on' || (this.touchMode === 'auto' && this.isTouchDevice()));
+    const padActive = document.body.classList.contains('pad-active');
+    const show = this.hudVisible && (this.touchMode === 'on' || (this.touchMode === 'auto' && this.isTouchDevice() && !padActive));
     this.el.touch.classList.toggle('enabled', show);
+    document.body.classList.toggle('touch-device', this.isTouchDevice());
     document.body.classList.toggle('touch-active', show);
   }
 
@@ -267,6 +270,7 @@ export class UIManager {
 
   showRaceIntro(showControls, tip) {
     this.$('intro-keys').classList.toggle('hidden', !showControls);
+    this.$('intro-pad').classList.toggle('hidden', !showControls);
     this.$('intro-tip').textContent = tip;
     this.$('race-intro').classList.add('visible');
   }

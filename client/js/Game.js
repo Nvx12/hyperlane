@@ -124,6 +124,19 @@ export class Game {
       this.audio.unlock();
       if (this.input.touchMode) this.ui.noteTouch();
     };
+    this.input.isRacing = () => this.isRaceActive();
+    this.input.onMethodChange = () => this.ui.updateTouchVisibility();
+    this.input.onPadConnect = () => {
+      this.ui.toast('Controller connected', 'RT accelerate · LT brake · A boost', 'unlock');
+      this.shell.emit('gamepad', { connected: true });
+    };
+    this.input.onPadDisconnect = () => {
+      // Never let the car drive on unattended.
+      const racing = this.state === STATE.PLAYING || this.state === STATE.COUNTDOWN;
+      if (racing) this.pause();
+      this.ui.toast('Controller disconnected', racing ? 'Game paused' : 'Keyboard and touch still work', 'mission');
+      this.shell.emit('gamepad', { connected: false });
+    };
     this.traffic.onPass = car => this.skills.onPass(car);
     this.handlePickup = this.handlePickup.bind(this);
 
@@ -224,8 +237,10 @@ export class Game {
     this.camera.shakeScale = st.shake;
     this.audio.applySettings(st);
     this.ui.setTouchMode(st.touch);
-    if (q.maxDpr !== this.qualityCap) {
-      this.qualityCap = q.maxDpr;
+    // Phones: small screens with DPR 3 are fill-rate bound; 1.25x is visually indistinguishable.
+    const cap = this.ui.isTouchDevice() ? Math.min(q.maxDpr, PERF.MOBILE_MAX_DPR) : q.maxDpr;
+    if (cap !== this.qualityCap) {
+      this.qualityCap = cap;
       this.resizePending = true;
     }
   }
@@ -254,6 +269,7 @@ export class Game {
     const dt = raw > PERF.MAX_DT ? PERF.MAX_DT : raw < 0 ? 0 : raw;
     if (this.resizePending) this.applyResize();
     this.monitorPerformance(raw);
+    this.input.poll(dt);
 
     if (this.state === STATE.PAUSED) {
       if (this.needsRender) {
@@ -283,6 +299,7 @@ export class Game {
     this.road.prepare(this.camera);
     this.updatePlayerScreen();
     this.ui.updateTouchVisibility();
+    this.shell.checkOrientation();
     this.needsRender = true;
   }
 
@@ -380,6 +397,7 @@ export class Game {
     this.ui.showRaceIntro(this.save.stats.races < SHOW_CONTROLS_RACES, tipFor(this.save.stats.races));
     this.audio.setMusicMode('race');
     this.shell.refreshUpdateBanner();
+    this.shell.checkOrientation();
     this.lastTime = performance.now();
   }
 
@@ -462,6 +480,7 @@ export class Game {
     this.player.wreck(direction);
     this.traffic.spawnEnabled = false;
     this.camera.addTrauma(1);
+    this.input.rumble(1, 450);
     this.camera.fovOverride = 0.12; // pull in on the wreck
     this.audio.crash(1.2);
     this.audio.siren(false);
@@ -822,6 +841,7 @@ export class Game {
     this.events.onCrash();
     this.effects.flash.damage = 1;
     this.camera.addTrauma(sideHit ? 0.4 : 0.65);
+    this.input.rumble(sideHit ? 0.45 : 0.75, 180);
     this.audio.crash(sideHit ? 0.6 : 1);
     this.ui.damageFlash(dir);
 

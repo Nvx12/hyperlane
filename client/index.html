@@ -135,6 +135,13 @@
       <div class="intro-keys touch-only" id="intro-touch">
         <span>◀ ▶ Steer</span><span>Auto-accelerate</span><span>BRAKE</span><span>BOOST</span>
       </div>
+      <div class="intro-keys pad-only" id="intro-pad">
+        <span><kbd class="wide">L-Stick</kbd> Steer</span>
+        <span><kbd>RT</kbd> Accelerate</span>
+        <span><kbd>LT</kbd> Brake</span>
+        <span><kbd>A</kbd> Boost</span>
+        <span><kbd class="wide">Start</kbd> Pause</span>
+      </div>
       <p class="intro-tip" id="intro-tip"></p>
     </div>
     <div id="toasts" class="toasts" aria-live="polite"></div>
@@ -143,6 +150,13 @@
     <div id="update-banner" class="update-banner" role="status" hidden>
       <span><b>New version available</b><small>Update now — it takes a second.</small></span>
       <button class="btn btn-primary" data-action="update">Update</button>
+    </div>
+
+    <!-- Phones held upright mid-race: the road needs a wide screen -->
+    <div id="rotate-overlay" class="rotate-overlay" role="alert">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="20" y="8" width="24" height="42" rx="4" fill="none" stroke="currentColor" stroke-width="3"/><path d="M10 40a24 24 0 0 0 20 16M54 24A24 24 0 0 0 34 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+      <b>Rotate your device</b>
+      <small>Night Vector plays in landscape. Your race is paused.</small>
     </div>
 
     <!-- Touch controls (shown on touch devices, or when forced in settings) -->
@@ -206,6 +220,7 @@
         <div class="home-daily" id="home-daily"></div>
       </div>
       <p class="menu-hint"><kbd>Enter</kbd> Play · <kbd>G</kbd> Garage · <kbd>Esc</kbd> Back</p>
+      <p class="menu-hint menu-hint-pad"><kbd>A</kbd> Select · <kbd>B</kbd> Back · <kbd class="wide">Start</kbd> Pause</p>
     </section>
 
     <!-- Play: environment select -->

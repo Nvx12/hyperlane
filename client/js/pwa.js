@@ -1,6 +1,9 @@
+import { ENV } from './env.js';
+
 // Service-worker registration, update flow and install prompt.
 // Updates never apply on their own: the game decides when it's safe (not during a race)
 // to show "NEW VERSION AVAILABLE", and only reloads when the player accepts.
+
 const UPDATE_CHECK_MS = 30 * 60 * 1000;
 
 export class Pwa {
@@ -45,6 +48,16 @@ export class Pwa {
 
   async register() {
     if (!this.supported) return;
+    // Development: a cache-first worker would serve stale code after every edit. Opt in with ?sw.
+    if (ENV.appEnv === 'development' && !new URLSearchParams(location.search).has('sw')) {
+      const regs = await navigator.serviceWorker.getRegistrations().catch(() => []);
+      for (const r of regs) r.unregister();
+      if (regs.length && window.caches) {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter(k => k.startsWith('nv-')).map(k => caches.delete(k)));
+      }
+      return;
+    }
     try {
       const reg = await navigator.serviceWorker.register('sw.js');
       this.registration = reg;

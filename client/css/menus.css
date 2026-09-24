@@ -395,6 +395,41 @@
 body.touch-active .touch-only { display: flex !important; }
 body.touch-active #intro-keys { display: none; }
 body.touch-active .race-intro { bottom: auto; top: 56%; max-width: calc(100vw - 32px); }
+
+/* Controller: gamepad hints replace keyboard/touch hints; focus is always visible. */
+.pad-only { display: none !important; }
+body.pad-active .pad-only:not(.hidden) { display: flex !important; }
+body.pad-active #intro-keys, body.pad-active #intro-touch { display: none !important; }
+.menu-hint-pad { display: none; }
+body.pad-active .menu-hint-pad { display: block; }
+body.pad-active .menu-hint:not(.menu-hint-pad) { display: none; }
+@media (max-width: 760px), (max-height: 480px) {
+  body.pad-active .menu-hint-pad { display: none; }
+}
+body.pad-active button:focus, body.pad-active [data-gtab]:focus, body.pad-active input:focus, body.pad-active select:focus { outline: 2px solid var(--cyan); outline-offset: 4px; }
+body.pad-active .btn:focus { filter: brightness(1.18); transform: translateY(-2px); }
+body.pad-active .nav-btn:focus { transform: translateX(8px); border-color: var(--cyan); background: linear-gradient(90deg, rgba(34,230,255,0.18), rgba(20,10,44,0.2)); outline: none; }
+
+/* Portrait phones mid-race */
+.rotate-overlay {
+  position: fixed; inset: 0; z-index: 40; display: none;
+  flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px;
+  background: rgba(6,3,13,0.94); color: var(--cyan); text-align: center;
+}
+.rotate-overlay svg { width: 84px; height: 84px; animation: rotate-hint 1.8s ease-in-out infinite; }
+.rotate-overlay b { font-family: var(--font-display); font-size: 20px; letter-spacing: 0.16em; text-transform: uppercase; color: #fff; }
+.rotate-overlay small { font-size: 15px; font-weight: 600; color: var(--muted); max-width: 280px; }
+@keyframes rotate-hint { 0%, 20% { transform: rotate(0deg); } 55%, 100% { transform: rotate(-90deg); } }
+@media (orientation: portrait) {
+  body.in-race.touch-device .rotate-overlay { display: flex; }
+}
+/* Landscape phones: keep the car visible during the intro. The on-screen buttons are
+   labelled, so only the tip is shown, above the road. */
+@media (max-height: 480px) {
+  body.touch-active .race-intro { top: 30%; gap: 6px; padding: 8px 14px; }
+  body.touch-active #intro-touch { display: none !important; }
+  body.touch-active .intro-tip { font-size: 13px; }
+}
 .track { display: flex; gap: 8px; font-size: 12px; font-weight: 600; color: #cfcbe8; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
 .track b { color: var(--amber); font-family: var(--font-display); font-size: 11px; }
 .track.done { color: var(--green); }

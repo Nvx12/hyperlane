@@ -119,6 +119,7 @@ export const BEAM = {
 
 export const PERF = {
   MAX_DPR: 1.5,
+  MOBILE_MAX_DPR: 1.25,
   MIN_RENDER_SCALE: 0.75,
   MAX_DT: 1 / 20,
   SLOW_FRAME_MS: 21,

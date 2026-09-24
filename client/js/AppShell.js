@@ -25,6 +25,13 @@ export class AppShell {
     window.addEventListener('offline', () => this.syncNetwork());
   }
 
+  // Turning a phone upright mid-race covers the road (see .rotate-overlay), so pause first.
+  // Called from the game's resize handling, which fires reliably on rotation.
+  checkOrientation() {
+    const portrait = window.innerHeight > window.innerWidth;
+    if (portrait && this.game.ui.isTouchDevice() && this.game.isRaceActive()) this.game.pause();
+  }
+
   start() {
     document.body.classList.toggle('no-fullscreen', !fullscreen.supported);
     document.body.classList.toggle('standalone', this.pwa.isStandalone);
