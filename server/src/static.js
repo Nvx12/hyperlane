@@ -1,7 +1,10 @@
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
 import { brotliCompressSync, gzipSync, constants as zlib } from 'node:zlib';
+import { existsSync } from 'node:fs';
 import { transformHtml } from './htmlTransform.js';
+import { buildPrecache, precacheScript } from './precache.js';
+import { GAME_VERSION } from '../../client/js/version.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -51,6 +54,19 @@ export function createStaticHandler(config, { extraRoutes = {} } = {}) {
     return entry;
   }
 
+  // Development: the precache manifest is computed from the live client/ folder (the production
+  // build writes it as a file instead). Cached briefly so a page load doesn't rehash per request.
+  let precache = null;
+  async function servePrecache(res) {
+    if (!precache || Date.now() - precache.at > 2000) {
+      const manifest = await buildPrecache(config.staticDir, GAME_VERSION, html => transformHtml(html, htmlOptions));
+      precache = { at: Date.now(), body: Buffer.from(precacheScript(manifest)) };
+    }
+    res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache', 'Content-Length': precache.body.length });
+    res.end(precache.body);
+    return true;
+  }
+
   return async function serveStatic(req, res, pathname) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return false;
     let rel;
@@ -61,6 +77,7 @@ export function createStaticHandler(config, { extraRoutes = {} } = {}) {
     }
     if (rel === '' || rel.endsWith('/')) rel += 'index.html';
     if (extraRoutes[rel]) return extraRoutes[rel](req, res);
+    if (rel === 'precache-manifest.js' && !existsSync(join(config.staticDir, rel))) return servePrecache(res);
     const file = normalize(join(config.staticDir, rel));
     // Path traversal guard + never serve dotfiles.
     if (!file.startsWith(config.staticDir + sep) || rel.split('/').some(p => p.startsWith('.'))) return false;

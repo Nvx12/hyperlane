@@ -15,14 +15,14 @@
   <meta property="og:title" content="Night Vector — Neon Highway Racer">
   <meta property="og:description" content="Thread the traffic. Own the night. A neon arcade racer you can play instantly in your browser.">
   <meta property="og:url" content="__PUBLIC_URL__/">
-  <meta property="og:image" content="__PUBLIC_URL__/og-image.png">
+  <meta property="og:image" content="__PUBLIC_URL__/og-image.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="Night Vector — a sports car racing down a neon-lit night highway">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Night Vector — Neon Highway Racer">
   <meta name="twitter:description" content="Thread the traffic. Own the night. Play instantly in your browser.">
-  <meta name="twitter:image" content="__PUBLIC_URL__/og-image.png">
+  <meta name="twitter:image" content="__PUBLIC_URL__/og-image.jpg">
 
   <!-- App / PWA -->
   <link rel="manifest" href="manifest.webmanifest">
@@ -68,6 +68,10 @@
         <div class="hud-buttons">
           <button class="icon-btn" data-action="pause" aria-label="Pause">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+          </button>
+          <button class="icon-btn fs-btn" data-action="fullscreen" aria-label="Enter fullscreen">
+            <svg class="icon-expand" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <svg class="icon-shrink" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           </button>
           <button class="icon-btn mute-btn" data-action="mute" aria-label="Mute sound">
             <svg class="icon-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -135,6 +139,12 @@
     </div>
     <div id="toasts" class="toasts" aria-live="polite"></div>
 
+    <!-- Shown only between races when a new version has been downloaded -->
+    <div id="update-banner" class="update-banner" role="status" hidden>
+      <span><b>New version available</b><small>Update now — it takes a second.</small></span>
+      <button class="btn btn-primary" data-action="update">Update</button>
+    </div>
+
     <!-- Touch controls (shown on touch devices, or when forced in settings) -->
     <div id="touch-controls" class="touch-controls">
       <div class="touch-group">
@@ -163,6 +173,12 @@
         </div>
       </div>
       <div class="credits"><span class="credit-icon">◈</span><b id="top-credits">0</b><small>CR</small></div>
+      <span class="net-chip" id="net-status" hidden>Offline</span>
+      <button class="btn-small install-btn" data-action="install" id="install-btn" hidden>Install</button>
+      <button class="icon-btn fs-btn" data-action="fullscreen" aria-label="Enter fullscreen">
+        <svg class="icon-expand" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg class="icon-shrink" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
       <button class="icon-btn mute-btn" data-action="mute" aria-label="Mute sound">
         <svg class="icon-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         <svg class="icon-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9l6 6M22 9l-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>

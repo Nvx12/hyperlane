@@ -20,6 +20,37 @@
 .loading p { max-width: 460px; padding: 0 20px; text-align: center; font-weight: 600; color: var(--muted); letter-spacing: 0.08em; }
 .loading.error p { color: var(--red); }
 
+/* ================================================================== app chrome: install / fullscreen / update / network */
+
+.fs-btn .icon-shrink { display: none; }
+.fs-active .fs-btn .icon-expand { display: none; }
+.fs-active .fs-btn .icon-shrink { display: block; }
+.no-fullscreen .fs-btn { display: none; }
+.btn-small.install-btn { border-color: rgba(34,230,255,0.6); color: var(--cyan); }
+.btn-small.install-btn:hover { background: rgba(34,230,255,0.15); }
+.net-chip { padding: 4px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.24em; text-transform: uppercase; color: var(--amber); border: 1px solid rgba(255,194,71,0.5); }
+[hidden] { display: none !important; }
+
+.update-banner {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 16px 12px 20px;
+  transform: translateX(-50%);
+  background: rgba(12,7,28,0.95);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--cyan);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  animation: toast-in 0.4s cubic-bezier(.2,.8,.2,1);
+}
+.update-banner b { display: block; font-family: var(--font-display); font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; }
+.update-banner small { color: var(--muted); font-weight: 600; }
+.update-banner .btn { min-width: 0; padding: 10px 24px; font-size: 13px; }
+
 /* ================================================================== menu shell */
 
 .menu-topbar {

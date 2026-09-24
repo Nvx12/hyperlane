@@ -1,7 +1,12 @@
 import { Game } from './Game.js';
 
 const boot = window.NV_BOOT;
-const nextFrame = () => new Promise(resolve => requestAnimationFrame(() => resolve()));
+// Yield so the loading bar can paint. rAF never fires in background tabs, so a timeout
+// guarantees boot still completes when the game is opened in a tab that isn't focused.
+const nextFrame = () => new Promise(resolve => {
+  requestAnimationFrame(() => resolve());
+  setTimeout(resolve, 100);
+});
 
 // Waits for the display fonts (so canvas text and billboards render correctly), but never
 // blocks startup for long — the game falls back to system fonts.

@@ -21,6 +21,11 @@ export default [
     languageOptions: { ecmaVersion: 2024, sourceType: 'module', globals: { ...globals.node } },
   },
   {
+    // These scripts also send functions to run inside the browser page (Playwright evaluate).
+    files: ['tools/**/*.mjs', 'tests/e2e/**/*.js'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
+  {
     rules: {
       'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }],
       'no-empty': ['error', { allowEmptyCatch: true }],

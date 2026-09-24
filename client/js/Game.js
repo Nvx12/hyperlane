@@ -24,6 +24,7 @@ import { Progression } from './Progression.js';
 import { resolveCustom } from './data/cosmetics.js';
 import { tipFor, SHOW_CONTROLS_RACES } from './data/tips.js';
 import { ENV } from './env.js';
+import { AppShell } from './AppShell.js';
 import { createSpriteBank, createPlayerSprites, createUnderglowSprite, createBeamSprite } from './Sprites.js';
 
 export const STATE = Object.freeze({
@@ -93,8 +94,12 @@ export class Game {
       garage: () => this.enterMenu('garage'),
       pause: () => this.togglePause(),
       mute: () => this.toggleMute(),
+      fullscreen: () => this.shell.toggleFullscreen(),
+      install: () => this.shell.install(),
+      update: () => this.shell.applyUpdate(),
       uiSound: kind => this.audio.ui(kind),
     });
+    this.shell = new AppShell(this);
     this.menus = new Menus(this);
     registerMenuScreens(this.menus, this);
 
@@ -234,6 +239,7 @@ export class Game {
     this.applyResize();
     this.ui.setMuted(this.save.settings.muted);
     this.enterMenu();
+    this.shell.start();
     this.lastTime = performance.now();
     requestAnimationFrame(this.frame);
     // Billboards use the display font; redraw them once it has loaded.
@@ -354,6 +360,7 @@ export class Game {
     this.ui.setHudVisible(false);
     this.hideIntro();
     this.menus.open(screen);
+    this.shell.refreshUpdateBanner();
   }
 
   startRace() {
@@ -372,6 +379,7 @@ export class Game {
     this.ui.peekMissions(true);
     this.ui.showRaceIntro(this.save.stats.races < SHOW_CONTROLS_RACES, tipFor(this.save.stats.races));
     this.audio.setMusicMode('race');
+    this.shell.refreshUpdateBanner();
     this.lastTime = performance.now();
   }
 
@@ -471,6 +479,7 @@ export class Game {
     this.ui.setHudVisible(false);
     this.ui.showResults(this.finishRun());
     this.audio.gameOver();
+    this.shell.refreshUpdateBanner();
     this.audio.setMusicMode('menu');
   }
 

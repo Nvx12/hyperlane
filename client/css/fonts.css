@@ -1,4 +1,5 @@
-/* Self-hosted fonts (SIL Open Font License 1.1 — see fonts/OFL-*.txt). Latin subset only. */
+/* Self-hosted fonts (SIL Open Font License 1.1 — see fonts/OFL-*.txt). Latin subset only.
+   No third-party font requests: the game works offline and doesn't leak visits to a CDN. */
 
 @font-face {
   font-family: 'Orbitron';
