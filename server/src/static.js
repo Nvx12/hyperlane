@@ -54,11 +54,13 @@ export function createStaticHandler(config, { extraRoutes = {} } = {}) {
     return entry;
   }
 
-  // Development: the precache manifest is computed from the live client/ folder (the production
-  // build writes it as a file instead). Cached briefly so a page load doesn't rehash per request.
+  // The precache manifest hashes what is actually served — including the HTML after runtime
+  // config (PUBLIC_URL etc.) is applied — so a config change also rolls out a new worker.
+  // Development rehashes every couple of seconds (files change); production hashes once.
   let precache = null;
   async function servePrecache(res) {
-    if (!precache || Date.now() - precache.at > 2000) {
+    const stale = !precache || (!config.isProd && Date.now() - precache.at > 2000);
+    if (stale) {
       const manifest = await buildPrecache(config.staticDir, GAME_VERSION, html => transformHtml(html, htmlOptions));
       precache = { at: Date.now(), body: Buffer.from(precacheScript(manifest)) };
     }

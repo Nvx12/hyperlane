@@ -3,6 +3,7 @@ import { createRateLimiter, RULES } from './rateLimit.js';
 import { createPlayerStore, playerRoutes } from './players.js';
 import { raceRoutes } from './races.js';
 import { createLeaderboard, leaderboardRoutes } from './leaderboard.js';
+import { eventRoutes } from './events.js';
 import { HttpError, sendError, sendJson, readJson, clientIp } from '../http.js';
 
 export const API_PREFIX = '/api/v1';
@@ -40,6 +41,7 @@ export async function createApi({ config, log, version, now = Date.now }) {
     ...playerRoutes(shared),
     ...raceRoutes(shared),
     ...leaderboardRoutes(shared),
+    ...eventRoutes(shared),
   ].map(r => ({ ...r, match: compile(r.path) }));
 
   // CORS only for explicitly allowed origins (separate API domain setups). Same-origin

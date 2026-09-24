@@ -210,10 +210,12 @@ export class Menus {
       if (prog.selectCar(id)) {
         audio.ui('confirm');
         this.game.applySelectedCar();
+        this.game.analytics.track('car_selected', { car: id });
       }
     } else if (action === 'buy') {
       if (prog.buyUpgrade(id, key)) {
         audio.purchase();
+        this.game.analytics.track('upgrade_bought', { car: id, upgrade: key, level: prog.carState(id).upgrades[key] });
         if (id === prog.save.selectedCar) this.game.applySelectedCar();
         this.refreshTopbar();
       } else {

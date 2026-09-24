@@ -3,6 +3,7 @@ import { OBJECTIVES } from './data/missions.js';
 import { CARS } from './balance.js';
 import { escapeHtml } from './UIManager.js';
 import { checkName } from './net/PlayerService.js';
+import { browserOptedOut } from './net/Analytics.js';
 
 const fmt = n => Math.floor(n).toLocaleString('en-US');
 const km = m => `${(m / 1000).toFixed(1)} km`;
@@ -339,6 +340,7 @@ export function registerMenuScreens(menus, game) {
     touch: { label: 'Touch controls', options: [['auto', 'Auto'], ['on', 'On'], ['off', 'Off']] },
     musicEnabled: { label: 'Music', options: [[true, 'On'], [false, 'Off']] },
     ghost: { label: 'Best-run ghost', options: [[true, 'On'], [false, 'Off']] },
+    analytics: { label: 'Anonymous usage stats', options: [[true, 'On'], [false, 'Off']] },
   };
 
   menus.register('settings', () => {
@@ -357,6 +359,11 @@ export function registerMenuScreens(menus, game) {
       <h3 class="section-title">Graphics &amp; controls</h3>
       <div class="settings-grid">${seg('quality')}${seg('shake')}${seg('touch')}${seg('ghost')}</div>
       <p class="muted small" style="margin-top:14px">Graphics quality only changes visual detail — gameplay is identical at every setting.</p>
+      <h3 class="section-title" style="margin-top:22px">Privacy</h3>
+      <div class="settings-grid">${browserOptedOut()
+    ? '<div class="setting"><span>Anonymous usage stats</span><span class="muted small">Off — your browser asks not to be tracked</span></div>'
+    : seg('analytics')}</div>
+      <p class="muted small" style="margin-top:10px">Usage stats are counts like "races finished" and "cars unlocked", tied to a random id stored on this device — never your name, profile or IP address. They help balance the game.</p>
       <div class="danger-zone"><button class="btn-small" data-reset="1">Reset all progress</button></div>`;
   });
 
@@ -374,6 +381,8 @@ export function registerMenuScreens(menus, game) {
       const key = btn.dataset.setting;
       const option = CHOICES[key].options.find(([v]) => String(v) === btn.dataset.value);
       save().settings[key] = option[0];
+      if (key === 'analytics') game.analytics.optOutChanged();
+      else game.analytics.track('settings_changed', { key, value: String(option[0]) });
       game.audio.ui('click');
       game.applySettings();
       game.store.save();

@@ -1,0 +1,27 @@
+# Single-container deployment: game + API + SQLite on a named volume.
+#   docker compose up -d --build
+# Put a TLS-terminating reverse proxy (Caddy, nginx, a platform load balancer) in front and
+# set TRUST_PROXY=true so rate limits see real client addresses.
+services:
+  night-vector:
+    build: .
+    image: night-vector:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      ANALYTICS_ENABLED: ${ANALYTICS_ENABLED:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - night-vector-data:/data
+    stop_grace_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  night-vector-data:

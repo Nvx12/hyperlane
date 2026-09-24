@@ -62,7 +62,9 @@ export class AppShell {
     const t = Date.now();
     if (!api || (!force && (api.reachable || t - (this.lastPing || 0) < 30_000))) return;
     this.lastPing = t;
-    api.request('GET', '/status', { retries: 0, timeout: 4000 });
+    api.request('GET', '/status', { retries: 0, timeout: 4000 }).then(r => {
+      if (r.ok && r.data.features && this.game.analytics) this.game.analytics.setServerEnabled(r.data.features.analytics);
+    });
   }
 
   // OFFLINE: no network at all. LOCAL ONLY: network is up but the game server isn't

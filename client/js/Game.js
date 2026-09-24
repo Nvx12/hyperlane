@@ -29,6 +29,7 @@ import { ApiClient } from './net/ApiClient.js';
 import { PlayerService } from './net/PlayerService.js';
 import { RaceService } from './net/RaceService.js';
 import { Ghost } from './Ghost.js';
+import { Analytics } from './net/Analytics.js';
 import { takeChallengeFromUrl, shareRun } from './Share.js';
 import { createSpriteBank, createPlayerSprites, createUnderglowSprite, createBeamSprite } from './Sprites.js';
 
@@ -111,6 +112,14 @@ export class Game {
     this.players = new PlayerService(this.api);
     this.race = new RaceService(this.api, this.players);
     this.ghost = new Ghost();
+    this.analytics = new Analytics(this.api, () => this.save.settings);
+    // App-shell events → analytics (coarse, no identifiers).
+    this.shell.on((type, data) => {
+      if (type === 'installed') this.analytics.track('pwa_installed');
+      else if (type === 'gamepad') this.analytics.track('gamepad', { connected: data.connected });
+      else if (type === 'profile' && data.action === 'created') this.analytics.track('profile_created');
+      else if (type === 'share') this.analytics.track('share', { result: data.result });
+    });
     this.challenge = takeChallengeFromUrl(); // { name, score, distance, env, accepted } | null
     this.lastRun = null;
     this.api.onStatus(() => this.shell.syncNetwork());
@@ -262,6 +271,12 @@ export class Game {
   // ---------------------------------------------------------------- lifecycle
 
   start() {
+    this.analytics.track('session_start', {
+      pwa: this.shell.pwa.isStandalone,
+      touch: this.ui.isTouchDevice(),
+      returning: this.save.stats.races > 0,
+    });
+    if (this.challenge) this.analytics.track('challenge_opened');
     this.goals.ensureMissions();
     this.applySelectedCar();
     this.applySettings();
@@ -421,6 +436,7 @@ export class Game {
     this.race.begin(this.car.id, this.selectedEnv); // background request; never blocks the countdown
     this.ghost.enabled = this.save.settings.ghost;
     this.ghost.startRun();
+    this.analytics.track('race_start', { car: this.car.id, env: this.selectedEnv, tour: this.tour, ghost: Boolean(this.ghost.active) });
     this.lastTime = performance.now();
   }
 
@@ -448,6 +464,30 @@ export class Game {
     this.ui.peekMissions(false);
   }
 
+  noteUnlock(car, events) {
+    events.push(['unlock', `NEW CAR UNLOCKED · ${car.name}`]);
+    this.analytics.track('car_unlocked', { car: car.id });
+  }
+
+  // Coarse run summary for analytics: rounded numbers and ids of game content only.
+  trackRunEnd(run, goalEvents, newLevel) {
+    const a = this.analytics;
+    a.track('race_end', {
+      car: this.car.id,
+      env: this.selectedEnv,
+      score_k: Math.round(run.score / 1000),
+      km: Math.round(run.distance / 100) / 10,
+      secs: Math.round(this.runTime),
+      combo: run.bestMultiplier,
+      wrecked: this.player.health <= 0,
+    });
+    const count = kind => goalEvents.filter(([k]) => k === kind).length;
+    if (count('mission')) a.track('mission_complete', { count: count('mission') });
+    if (count('achievement')) a.track('achievement', { count: count('achievement') });
+    if (goalEvents.some(([, text]) => text.startsWith('DAILY'))) a.track('daily_complete');
+    if (newLevel) a.track('level_up', { level: newLevel });
+  }
+
   async shareLastRun() {
     if (!this.lastRun) return;
     const { result, text, url } = await shareRun({ name: this.players.registered ? this.players.name : '', ...this.lastRun });
@@ -468,6 +508,7 @@ export class Game {
     const ch = this.challenge;
     if (!ch) return;
     ch.accepted = true;
+    this.analytics.track('challenge_accepted');
     // Race the same route when it's unlocked; otherwise the current one (score is score).
     if (getEnvironment(ch.env).level <= this.save.level) this.selectedEnv = ch.env;
     this.startRace();
@@ -590,7 +631,7 @@ export class Game {
     const beaten = prog.updateRecords(run);
     prog.addLifetimeStats(run, this.car.id, this.runTime);
     const events = [];
-    for (const car of prog.checkUnlocks()) events.push(['unlock', `NEW CAR UNLOCKED · ${car.name}`]);
+    for (const car of prog.checkUnlocks()) this.noteUnlock(car, events);
     this.lastRun = { score: run.score, distance: run.distance, topSpeed: run.topSpeed, combo: run.bestMultiplier, env: this.selectedEnv };
     const ch = this.challenge;
     if (ch && ch.accepted) {
@@ -618,9 +659,10 @@ export class Game {
     const before = prog.levelProgress();
     const levelsGained = prog.addXp(xp);
     const after = prog.levelProgress();
-    for (const car of prog.checkUnlocks()) events.push(['unlock', `NEW CAR UNLOCKED · ${car.name}`]);
+    for (const car of prog.checkUnlocks()) this.noteUnlock(car, events);
     if (levelsGained.length) events.unshift(['unlock', `LEVEL ${after.level} · ${after.title}`]);
     this.store.save();
+    this.trackRunEnd(run, goals.events, levelsGained.length ? after.level : 0);
 
     const km = v => `${(v / 1000).toFixed(2)} KM`;
     const isRecord = key => beaten.includes(key);

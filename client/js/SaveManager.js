@@ -21,6 +21,7 @@ export function defaultSettings() {
     quality: 'high', // low | medium | high
     touch: 'auto', // auto | on | off
     ghost: true, // personal-best ghost car
+    analytics: true, // anonymous usage stats (also off when the browser sends DNT/GPC)
   };
 }
 

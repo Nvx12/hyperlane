@@ -9,7 +9,7 @@ const silentLog = { debug() {}, info() {}, warn() {}, error() {} };
 export async function startTestServer(overrides = {}) {
   const clock = { t: Date.UTC(2026, 8, 24, 12, 0, 0) };
   const now = () => clock.t;
-  const config = loadConfig({ APP_ENV: 'test', DATABASE_PATH: ':memory:', SESSION_SECRET: 'test-secret-'.padEnd(64, 'x'), ...overrides });
+  const config = loadConfig({ APP_ENV: 'test', DATABASE_PATH: ':memory:', ...overrides });
   const api = await createApi({ config, log: silentLog, version: '0.0.0-test', now });
   const server = createServer(createApp({ config, log: silentLog, api, version: '0.0.0-test' }));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

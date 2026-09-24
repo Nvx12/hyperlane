@@ -32,7 +32,7 @@ server.listen(config.port, config.host, () => {
     static: config.staticDir.replace(config.root, '.'),
     database: api ? (config.databasePath === ':memory:' ? 'memory' : 'file') : 'none',
   });
-  if (config.generatedSecret) log.warn('SESSION_SECRET not set — using a random dev secret (race sessions reset on restart)');
+  if (config.isProd && !config.publicUrl) log.warn('PUBLIC_URL not set — canonical and social preview links will be relative');
 });
 
 // Graceful shutdown: stop accepting connections, let in-flight requests finish, close the DB.

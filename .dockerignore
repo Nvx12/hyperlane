@@ -1,0 +1,16 @@
+node_modules
+dist
+data
+*.db
+*.db-*
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example
+tests
+test-results
+playwright-report
+coverage
+*.log

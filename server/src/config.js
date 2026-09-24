@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -34,13 +33,8 @@ export function loadConfig(overrides = {}) {
   const staticDir = env.STATIC_DIR ? resolve(ROOT, env.STATIC_DIR)
     : isProd && existsSync(dist) ? dist : resolve(ROOT, 'client');
 
-  let sessionSecret = env.SESSION_SECRET || '';
-  const generatedSecret = !sessionSecret;
-  if (generatedSecret) {
-    if (isProd) throw new Error('SESSION_SECRET must be set in staging/production (use a long random string).');
-    sessionSecret = randomBytes(32).toString('hex'); // dev: sessions simply don't survive restarts
-  }
-
+  // No signing secret is needed: race sessions and player tokens are random values checked
+  // against the database, and challenge links are validated rather than trusted.
   return Object.freeze({
     root: ROOT,
     appEnv,
@@ -52,8 +46,6 @@ export function loadConfig(overrides = {}) {
     staticDir,
     databasePath: env.DATABASE_PATH === ':memory:' ? ':memory:' : resolve(ROOT, env.DATABASE_PATH || 'data/nightvector.db'),
     corsOrigins: (env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean),
-    sessionSecret,
-    generatedSecret,
     trustProxy: bool(env.TRUST_PROXY, false),
     analyticsEnabled: bool(env.ANALYTICS_ENABLED, true),
     rateLimitScale: Math.max(0.1, Number(env.RATE_LIMIT_SCALE) || 1), // tests / staging can relax limits
