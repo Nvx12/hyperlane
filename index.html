@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#06030d">
+  <meta name="description" content="Hyperlane — a neon arcade highway racer. Weave through traffic, chain near misses and outrun the police. Runs in your browser.">
+  <title>Hyperlane — Night Highway Racer</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2306030d'/%3E%3Cpath d='M22 56 30 10h4l8 46' fill='none' stroke='%23ff2d95' stroke-width='5'/%3E%3Cpath d='M32 20v6m0 8v6m0 8v6' stroke='%2322e6ff' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/menus.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="game" aria-label="Hyperlane game view"></canvas>
+
+    <!-- ============================================================ HUD -->
+    <div id="hud" class="hud hidden" aria-hidden="true">
+      <div class="hud-panel hud-score">
+        <span class="hud-label">Score</span>
+        <span class="hud-value" id="hud-score">0</span>
+        <span class="hud-sub"><span id="hud-distance">0.00</span> km · Best <b id="hud-best">0</b></span>
+      </div>
+
+      <div class="hud-mult" id="hud-mult-block" data-tier="0">
+        <span class="hud-label">Combo</span>
+        <span class="mult-value" id="hud-mult">x1</span>
+        <div class="mult-bar"><i id="hud-mult-bar"></i></div>
+        <div class="combo-timer"><i id="hud-combo-timer"></i></div>
+        <span class="slip-chip" id="hud-slipstream">Slipstream</span>
+      </div>
+
+      <div class="hud-right">
+        <div class="hud-buttons">
+          <button class="icon-btn" data-action="pause" aria-label="Pause">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+          </button>
+          <button class="icon-btn mute-btn" data-action="mute" aria-label="Mute sound">
+            <svg class="icon-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <svg class="icon-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9l6 6M22 9l-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="mission-tracker" id="mission-tracker"></div>
+      </div>
+
+      <div class="event-banner" id="event-banner">
+        <span class="event-kicker" id="event-kicker"></span>
+        <span class="event-title" id="event-title"></span>
+        <span class="event-sub" id="event-sub"></span>
+        <div class="event-bar"><i id="event-bar"></i></div>
+      </div>
+
+      <div class="hud-meters">
+        <div class="meter" id="meter-health">
+          <div class="meter-head"><span class="hud-label">Hull</span></div>
+          <div class="bar"><i id="hud-health"></i></div>
+        </div>
+        <div class="meter meter-boost" id="meter-boost">
+          <div class="meter-head"><span class="hud-label">Boost</span><kbd>Space</kbd></div>
+          <div class="bar"><i id="hud-boost"></i></div>
+        </div>
+      </div>
+
+      <div class="speedo" id="speedo">
+        <svg viewBox="0 0 200 200" aria-hidden="true">
+          <defs>
+            <linearGradient id="speedo-grad" x1="0" y1="1" x2="1" y2="0">
+              <stop offset="0" stop-color="#22e6ff"/>
+              <stop offset="0.6" stop-color="#b36bff"/>
+              <stop offset="1" stop-color="#ff2d95"/>
+            </linearGradient>
+          </defs>
+          <circle class="speedo-track" cx="100" cy="100" r="84" transform="rotate(135 100 100)"/>
+          <circle class="speedo-arc" id="speedo-arc" cx="100" cy="100" r="84" transform="rotate(135 100 100)" stroke-dasharray="0 527.79"/>
+          <circle class="speedo-ticks" cx="100" cy="100" r="70" transform="rotate(135 100 100)"/>
+        </svg>
+        <div class="speedo-readout">
+          <span id="hud-speed">0</span>
+          <small>KM/H</small>
+        </div>
+      </div>
+    </div>
+
+    <div id="hit-left" class="hit-edge left" aria-hidden="true"></div>
+    <div id="hit-right" class="hit-edge right" aria-hidden="true"></div>
+    <div id="callout" class="callout" aria-live="polite"></div>
+
+    <!-- Race intro: controls for new players + one gameplay tip, shown during the countdown -->
+    <div id="race-intro" class="race-intro" aria-live="polite">
+      <div class="intro-keys" id="intro-keys">
+        <span><kbd>A</kbd><kbd>D</kbd> Steer</span>
+        <span><kbd>W</kbd> Accelerate</span>
+        <span><kbd>S</kbd> Brake</span>
+        <span><kbd class="wide">Space</kbd> Boost</span>
+        <span><kbd>Esc</kbd> Pause</span>
+      </div>
+      <div class="intro-keys touch-only" id="intro-touch">
+        <span>◀ ▶ Steer</span><span>Auto-accelerate</span><span>BRAKE</span><span>BOOST</span>
+      </div>
+      <p class="intro-tip" id="intro-tip"></p>
+    </div>
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+
+    <!-- Touch controls (shown on touch devices, or when forced in settings) -->
+    <div id="touch-controls" class="touch-controls">
+      <div class="touch-group">
+        <button class="touch-btn" data-touch="left" aria-label="Steer left">
+          <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="touch-btn" data-touch="right" aria-label="Steer right">
+          <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="touch-group">
+        <button class="touch-btn touch-brake" data-touch="brake" aria-label="Brake">BRAKE</button>
+        <button class="touch-btn touch-boost" data-touch="boost" aria-label="Boost">BOOST</button>
+      </div>
+    </div>
+
+    <!-- ============================================================ MENU SHELL -->
+    <header id="menu-topbar" class="menu-topbar visible">
+      <div class="brand">HYPER<span>LANE</span></div>
+      <div class="driver">
+        <div class="level-badge" id="top-level">1</div>
+        <div class="driver-info">
+          <span class="driver-title" id="top-title">ROOKIE</span>
+          <div class="xp-bar"><i id="top-xp"></i></div>
+          <span class="xp-text" id="top-xp-text">0 / 350 XP</span>
+        </div>
+      </div>
+      <div class="credits"><span class="credit-icon">◈</span><b id="top-credits">0</b><small>CR</small></div>
+      <button class="icon-btn mute-btn" data-action="mute" aria-label="Mute sound">
+        <svg class="icon-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg class="icon-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9l6 6M22 9l-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+
+    <!-- Home -->
+    <section id="screen-menu" class="screen menu-home active" aria-label="Main menu">
+      <nav class="main-nav" aria-label="Main navigation">
+        <button class="nav-btn nav-play btn-primary" data-nav="play"><span>Play</span><small>Hit the highway</small></button>
+        <button class="nav-btn" data-nav="garage"><span>Garage</span><small id="nav-garage-sub">Cars &amp; upgrades</small></button>
+        <button class="nav-btn" data-nav="missions"><span>Missions</span><small id="nav-missions-sub">Daily &amp; objectives</small></button>
+        <button class="nav-btn" data-nav="achievements"><span>Achievements</span><small id="nav-ach-sub">0 unlocked</small></button>
+        <button class="nav-btn" data-nav="stats"><span>Statistics</span><small>Records &amp; totals</small></button>
+        <button class="nav-btn" data-nav="settings"><span>Settings</span><small>Audio, graphics, controls</small></button>
+      </nav>
+      <div class="home-hero">
+        <p class="eyebrow">Night highway racer</p>
+        <h1 class="title">HYPERLANE</h1>
+        <div class="home-car">
+          <span class="hud-label">Current ride</span>
+          <b id="home-car-name">Vireo Hatch</b>
+          <small id="home-car-class">Starter hatchback</small>
+        </div>
+        <div class="home-daily" id="home-daily"></div>
+      </div>
+      <p class="menu-hint"><kbd>Enter</kbd> Play · <kbd>G</kbd> Garage · <kbd>Esc</kbd> Back</p>
+    </section>
+
+    <!-- Play: environment select -->
+    <section id="screen-play" class="screen panel-screen" aria-label="Choose route">
+      <div class="panel">
+        <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Choose your route</h2></div>
+        <div class="env-grid" id="env-grid"></div>
+        <div class="panel-foot">
+          <label class="toggle"><input type="checkbox" id="tour-toggle"><span>World tour — the route changes every few km</span></label>
+          <button class="btn btn-primary" data-action="start">Start Race</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Garage -->
+    <section id="screen-garage" class="screen panel-screen" aria-label="Garage">
+      <div class="panel garage">
+        <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Garage</h2></div>
+        <div class="garage-body">
+          <div class="car-list" id="car-list"></div>
+          <div class="car-stage">
+            <canvas id="garage-canvas" width="520" height="300" aria-hidden="true"></canvas>
+            <div class="car-title">
+              <span class="hud-label" id="garage-class">Class</span>
+              <h3 id="garage-name">Car</h3>
+              <p id="garage-blurb"></p>
+            </div>
+            <div class="car-action" id="garage-action"></div>
+          </div>
+          <div class="car-side">
+            <div class="tabs" role="tablist">
+              <button class="tab active" data-gtab="stats" role="tab">Performance</button>
+              <button class="tab" data-gtab="upgrades" role="tab">Upgrades</button>
+              <button class="tab" data-gtab="style" role="tab">Style</button>
+            </div>
+            <div class="tab-body" id="garage-tab"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Missions + daily -->
+    <section id="screen-missions" class="screen panel-screen" aria-label="Missions">
+      <div class="panel">
+        <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Missions</h2></div>
+        <div class="missions-body" id="missions-body"></div>
+      </div>
+    </section>
+
+    <!-- Achievements -->
+    <section id="screen-achievements" class="screen panel-screen" aria-label="Achievements">
+      <div class="panel">
+        <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Achievements</h2><span class="panel-count" id="ach-count"></span></div>
+        <div class="ach-grid" id="ach-grid"></div>
+      </div>
+    </section>
+
+    <!-- Statistics -->
+    <section id="screen-stats" class="screen panel-screen" aria-label="Statistics">
+      <div class="panel">
+        <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Statistics</h2></div>
+        <div class="stats-body" id="stats-body"></div>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section id="screen-settings" class="screen panel-screen" aria-label="Settings">
+      <div class="panel">
+        <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Settings</h2></div>
+        <div class="settings-body" id="settings-body"></div>
+      </div>
+    </section>
+
+    <!-- Pause -->
+    <section id="screen-pause" class="screen" aria-label="Paused">
+      <div class="card small-card">
+        <h2 class="screen-title">Paused</h2>
+        <div class="pause-missions" id="pause-missions"></div>
+        <div class="btn-stack">
+          <button class="btn btn-primary" data-action="resume">Resume</button>
+          <button class="btn btn-ghost" data-action="restart">Restart</button>
+          <button class="btn btn-ghost" data-action="menu">Main Menu</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section id="screen-results" class="screen" aria-label="Race results">
+      <div class="card results-card">
+        <h2 class="screen-title danger" id="results-title">Wrecked</h2>
+        <div class="results-grid">
+          <div class="results-main">
+            <span class="hud-label">Final score</span>
+            <div class="final-score" id="res-score">0</div>
+            <div class="new-best" id="res-newbest">New best score</div>
+            <div class="result-stats" id="res-stats"></div>
+            <div class="next-up">
+              <span class="hud-label">Next up</span>
+              <ul id="res-next"></ul>
+            </div>
+          </div>
+          <div class="results-side">
+            <div class="reward-block">
+              <div class="reward-head"><span class="hud-label">Credits earned</span><b class="reward-total" id="res-credits">+0</b></div>
+              <ul class="reward-list" id="res-credit-list"></ul>
+            </div>
+            <div class="reward-block">
+              <div class="reward-head"><span class="hud-label">Driver XP</span><b class="reward-total xp" id="res-xp">+0</b></div>
+              <div class="xp-row"><span class="level-badge small" id="res-level">1</span><div class="xp-bar big"><i id="res-xp-bar"></i></div></div>
+              <p class="level-up" id="res-levelup"></p>
+            </div>
+            <ul class="result-events" id="res-events"></ul>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" data-action="restart">Race again</button>
+          <button class="btn btn-ghost" data-action="garage">Garage</button>
+          <button class="btn btn-ghost" data-action="menu">Main Menu</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="fps" class="fps hidden"></div>
+
+    <div id="loading" class="loading" role="status">
+      <div class="loading-brand">HYPER<span>LANE</span></div>
+      <p id="loading-text">Warming up the engine…</p>
+      <noscript><p>Hyperlane needs JavaScript enabled to run.</p></noscript>
+    </div>
+  </div>
+
+  <script>
+    // If a module fails to load, don't leave the player staring at "Warming up…".
+    window.addEventListener('error', function () {
+      var screen = document.getElementById('loading');
+      if (screen && !screen.classList.contains('done')) {
+        document.getElementById('loading-text').textContent = 'Hyperlane failed to load. Please reload the page.';
+        screen.classList.add('error');
+      }
+    });
+  </script>
+  <script type="module" src="js/main.js"></script>
+  <script nomodule>
+    document.getElementById('loading-text').textContent = 'Your browser is too old to run Hyperlane. Please use a current version of Chrome, Firefox, Safari or Edge.';
+  </script>
+</body>
+</html>
