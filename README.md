@@ -2,7 +2,9 @@
 
 *Thread the traffic. Own the night.*
 
-An arcade endless-highway racer for the browser. Weave through traffic across five routes, chain risky moves into a combo multiplier, outrun the police, climb the global leaderboards and race your own best-run ghost. It installs as an app (PWA), plays offline, and supports keyboard, touch and game controllers.
+A mobile arcade racer, played in landscape with both thumbs. Weave through traffic across five routes, chain risky moves into a combo multiplier, outrun the police, climb the global leaderboards and race your own best-run ghost. Runs last 2–7 minutes, and one tap starts the next. It installs to the home screen (PWA) and plays offline.
+
+- **Built for phones:** touch-first controls (optional tilt steering), safe-area aware layout from 16:9 to 20:9, 30/60 FPS pacing, adaptive quality, haptics, and pausing on every interruption. Game controllers work too; the keyboard is kept only for development.
 
 - **Client:** vanilla JavaScript (ES modules), HTML5 Canvas and Web Audio. No framework and no bundler. Every graphic, sound and music track is generated procedurally.
 - **Server:** one small Node.js process with zero runtime dependencies. It serves the game and a JSON API, stores data in SQLite (`node:sqlite`), and runs in a single Docker container.
@@ -10,10 +12,12 @@ An arcade endless-highway racer for the browser. Weave through traffic across fi
 
 ## Screenshots
 
+Phone, 844×390 landscape:
+
 | | |
 |---|---|
-| ![Main menu](docs/screenshots/menu.jpg) | ![Racing at a x5 combo](docs/screenshots/race.jpg) |
-| ![Results screen](docs/screenshots/results.jpg) | ![Garage](docs/screenshots/garage.jpg) |
+| ![Home](docs/screenshots/menu.jpg) | ![Racing at a x5 combo with touch controls](docs/screenshots/race.jpg) |
+| ![Results](docs/screenshots/results.jpg) | ![Garage](docs/screenshots/garage.jpg) |
 
 ## Quick start
 
@@ -27,7 +31,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:8080. Add `?debug` for the developer monitor (press **F**) and a `window.nightVector` console handle. Neither is ever available in production.
+Open http://localhost:8080, ideally in your browser's device mode (landscape phone). To try it on a real phone on the same Wi-Fi, open `http://<your-computer's-LAN-IP>:8080` (the server listens on all interfaces by default; allow port 8080 through the firewall). Plain `http://` on a LAN address isn't a secure context, so install, offline mode and tilt need an HTTPS deployment or tunnel; touch play works either way. Add `?debug` for the developer monitor (press **F**) and a `window.nightVector` console handle. Neither is ever available in production.
 
 | Script | What it does |
 |---|---|
@@ -42,20 +46,25 @@ Open http://localhost:8080. Add `?debug` for the developer monitor (press **F**)
 
 ## Controls
 
-| Action | Keyboard | Touch | Controller |
+The car accelerates by itself; you steer, brake and boost.
+
+| Action | Touch (default) | Tilt (optional) | Controller |
 |---|---|---|---|
-| Steer | ← → / A D | ◀ ▶ | Left stick (analog) / D-pad |
-| Accelerate | ↑ / W | automatic | RT / R2 |
-| Brake | ↓ / S | BRAKE | LT / L2 |
-| Boost | Space (hold) | BOOST | A / Cross (or RB) |
-| Pause / back | P / Esc | ❚❚ | Start / Options · B / Circle (back in menus) |
-| Menus | Tab / Enter | tap | D-pad / stick to move, A to select |
-| Mute · Garage · Monitor | M · G · F (`?debug`) | buttons | — |
+| Steer | hold the left or right half of the left pad; slide between them without lifting | turn the phone like a wheel | left stick / D-pad |
+| Brake | BRAKE (right thumb) | BRAKE | LT / L2 |
+| Boost | BOOST (right thumb, lights up when charged) | BOOST | A / Cross (or RB) |
+| Pause | ❚❚ top right, or the phone's Back gesture | same | Start / Options |
+| Menus | tap; swipe between cars in the garage | tap | D-pad / stick, A to select, B to go back |
 
-Without the accelerator the car cruises at 150 km/h.
+- **Steering feel:** a quick tap nudges, a hold commits to a full lane change. Multi-touch works, so you can steer while braking or boosting.
+- **Tilt:** chosen in Settings (the tap also asks iOS for motion permission). It calibrates at the start of every race and has a recenter button. Without a sensor, or if permission is refused, the game says so and keeps touch steering.
+- **Interruptions:** switching apps, a call, locking the screen or turning the phone upright pauses the race and saves. Resuming runs a 3-2-1 countdown with the world frozen.
+- **First race:** a short tutorial (steer, brake, near miss, boost) runs on the first race. It can be skipped and replayed from Settings, and it doesn't cost the run.
+- **Keyboard (development only):** arrows/A-D steer, S brake, Space boost, P pause. It isn't shown anywhere in the UI.
 
-- **Touch:** controls appear automatically on touch screens (Settings can force them on or off). Holding a phone upright mid-race pauses the game and asks you to rotate it.
-- **Controllers:** connecting one shows a toast and switches every on-screen hint to controller buttons. The pad rumbles on hits. If it disconnects mid-race, the game pauses.
+### Settings
+
+Steering (Touch / Tilt) · Sensitivity · Tilt recenter · Haptics · Graphics (Auto / Low / Medium / High) · Frame rate (Auto / 30 / 60) · Screen shake (Off / Low / Normal) · Audio · Music · Best-run ghost · Anonymous analytics · Replay tutorial · Reset progress.
 
 ## How to score
 
@@ -110,7 +119,9 @@ client/                 static PWA (served as-is in dev, copied to dist/ by the 
     balance.js config.js  gameplay balance · engine constants
     version.js env.js     version numbers · runtime config from <meta> tags
     AppShell.js pwa.js fullscreen.js   install, updates, fullscreen, connectivity, orientation
-    InputManager.js GamepadInput.js FocusNav.js   keyboard/touch/controller → one set of actions
+    InputManager.js TouchInput.js TiltInput.js GamepadInput.js FocusNav.js   touch/tilt/controller (+ dev keyboard) → one set of actions
+    Performance.js        quality tiers, AUTO ladder, 30/60 FPS pacing
+    Tutorial.js Haptics.js BackNav.js   first-race coach · vibration · Android Back handling
     Ghost.js Share.js     personal-best ghost · share text and challenge links
     net/                  ApiClient, PlayerService, RaceService, Analytics
     … Player, TrafficManager, SkillSystem, ScoreSystem, EventDirector, Road, Environment,
@@ -213,12 +224,13 @@ The browser is untrusted. The server never takes a client number at face value; 
 
 ## PWA and offline
 
-- **Install:** the manifest has icons (including maskable) and runs fullscreen in landscape. An in-game **Install** button appears when the browser offers it; the iOS hint is Share → Add to Home Screen.
+- **Install:** the manifest (icons including maskable, a phone screenshot) opens the game fullscreen in landscape. An in-game **Install** button appears when the browser offers it; the iOS hint is Share → Add to Home Screen. In the browser, the first PLAY tap also goes fullscreen.
 - **Service worker:**
   - Precaches everything the game needs; the cache name comes from a content hash that the server computes.
   - Cache-first for assets; navigations are answered from the cached shell. `/api` and `/health` are never cached.
 - **Updates never interrupt a race.** A new version downloads in the background. The "New version available" banner appears only in menus or on the results screen, and the reload happens only when the player accepts.
 - **Offline:** the full game works, including saves, missions, the daily challenge, the ghost and challenges. The topbar shows **OFFLINE** (no network) or **LOCAL ONLY** (server unreachable).
+- **Back button:** during a race or on a sub-screen, Android's Back pauses or goes back instead of leaving the game.
 
 ## Configuration
 
@@ -278,7 +290,7 @@ Put a TLS-terminating reverse proxy in front (Caddy, nginx or a platform load ba
 |---|---|---|
 | Unit | `npm test` | Scoring and combo tiers/decay, upgrades and costs, XP, records, unlocks, run rewards, save load/migration/corruption/sanitizing, missions, daily challenge, achievements, anti-cheat rules, challenge links, ghost |
 | API | `npm test` | Profiles, names, auth, body limits, rate limits, CORS, sessions, idempotency, replay, expiry, validation, leaderboards, erasure, analytics, security abuse cases, robots/sitemap |
-| E2E | `npm run e2e` | Boot without console errors, full race to results, pause, online profile and leaderboard, security headers, offline play via the service worker, challenge links (valid and hostile), controller navigation and driving, frame-time budget. Desktop and phone profiles. |
+| E2E | `npm run e2e` | Phone home screen without console errors, one-tap PLAY → race with touch controls → results → one-tap restart, pause button and resume countdown, first-race tutorial and skip, online profile and leaderboard, security headers, offline play via the service worker, challenge links (valid and hostile), controller navigation and driving, frame-time budget. Phone and desktop profiles. |
 
 **CI** (`.github/workflows/ci.yml`) runs lint → unit/API → build → E2E. It then builds the Docker image, waits for the container to become healthy, and checks that `docker stop` exits cleanly.
 
@@ -287,29 +299,35 @@ Put a TLS-terminating reverse proxy in front (Caddy, nginx or a platform load ba
 - **No per-frame allocations** in hot paths: traffic, pickups, particles, rain and floating text all use pools or typed arrays.
 - **Batched rendering:** each road layer is one batched path fill; sprites and backdrops are pre-rendered and cached.
 - **HUD:** updates 15 times a second and only writes values that changed.
-- **Pixel budget:** high-DPI screens render at most ~1080p-equivalent pixels (never below native 1×), and phones at most 1.25× density. On integrated GPUs the limit is fill rate, not JavaScript.
-- **Auto-scaling:** sustained frame drops reduce effects detail first, then render resolution.
-- **Measured** in Chromium on an AMD Radeon integrated GPU, in the worst case (max difficulty, heavy traffic, a police chase, a storm and continuous boost at once):
+- **Quality tiers** change cosmetics only (effects detail, particle budget, pixel density); gameplay is identical on every tier.
 
-  | Screen | FPS | Frames over 20 ms (12 s) |
-  |---|---|---|
-  | 1920×1080 @1× | 60 | 0 |
-  | 1920×1080 @2× (4K / retina) | 59.8 | 3 |
-  | 1366×768 @1× | 60 | 0 |
-  | 1280×720 @1× | 60 | 0 |
-  | Phone landscape 915×412 @2.6× | 60 | 0 |
+  | Tier | Max density | Pixel budget | Particles |
+  |---|---|---|---|
+  | Low | 1× | 0.5 MP | 140 |
+  | Medium | 1.5× | 1.0 MP | 300 |
+  | High | 2× | 1.7 MP | 520 |
 
-- **Stability:** 10 play → crash → restart cycles held 60 FPS, with a constant listener count, 2 active intervals, a single AudioContext and a heap of about 4 MB. The heap stayed flat at 9.5 MB over 33 races when forced to garbage-collect.
-- **Payload:** the release is 438 KB gzipped (brotli is smaller). The Docker image is 59 MB.
+- **Auto** picks a tier from the CPU core count and device memory (never the user-agent string). It then steps down on sustained slow frames: next tier, then 85% and 75% render scale, then 30 FPS. It steps back up carefully when there's headroom and remembers what it learned. Manual tiers only fall back to 30 FPS if 60 is clearly out of reach.
+- **Battery and heat:** menus render at 30 FPS, 120 Hz screens are capped at 60, and nothing runs while the page is hidden.
+- **Measured** on a phone viewport (844×390 @3×) in Chromium with the CPU throttled to emulate a mid-range (4×) and a low-end (6×) phone, in the worst case (heavy traffic, a police chase, a storm and continuous boost):
+
+  | CPU | Auto | Low | Medium | High | Render CPU / frame |
+  |---|---|---|---|---|---|
+  | 4× slower | 56–58 FPS | 60 | 59 | 57.5 | 4.5 ms |
+  | 6× slower | ~53 FPS (Low, reduced scale) | 30 (stable) | 30 | 30 | 5.7 ms |
+
+- **Stability:** 20 play → crash → restart cycles on a phone viewport kept the heap at 3.4–4.0 MB, with 79 listeners, about 880 DOM nodes, one AudioContext, one interval and a steady 60 rAF/s.
+- **Session length:** simulated players on the default car had a median run of 2.7–3.0 minutes.
+- **Payload:** what a phone downloads and caches to play is about 370 KB gzipped (brotli is smaller). The whole release is 549 KB; the rest is the social preview and install-sheet JPEGs, which are fetched only when needed. The Docker image is 59 MB.
 
 ## Known limitations
 
+- **Not yet tested on physical phones.** Everything was verified in Chromium device emulation: real multi-touch via CDP, CPU throttling, synthetic motion-sensor events and a simulated gamepad. Real-device beta testing is the next step.
+- Safari/iOS and Firefox are untested. Known iOS gaps: no Fullscreen API on iPhone (use Add to Home Screen), no `navigator.vibrate` (haptics show "Not supported"), and orientation can't be locked from the web.
 - The road is flat (no hills), and all traffic drives in your direction.
 - Anti-cheat can't detect a modified client that plays in real time with believable numbers (see above).
 - Display-name screening is a short word list, not full moderation; the `flagged` column is the manual tool.
 - The server is single-instance: rate limits live in memory, and SQLite runs on one volume.
-- Touch and controller support were tested in emulation (Chromium device emulation and a simulated standard gamepad), not on physical devices.
-- Verified browsers: Chromium, desktop and emulated mobile. Safari and Firefox have not been tested.
 
 ## Licenses
 

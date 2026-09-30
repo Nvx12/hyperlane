@@ -30,3 +30,19 @@ This file records the audit that drove the change and the plan it followed.
 5. **Performance.** Adaptive AUTO quality (down and up), battery-friendly frame pacing, fix per-frame allocations found in the audit.
 6. **PWA/offline.** Keep precache/offline; installed app is fullscreen landscape; network stays asynchronous.
 7. **QA.** Phone viewports 640×360 → 932×430 (16:9–20:9) and portrait menus, high DPR, multi-touch via CDP touch events, 20× restart memory test, throttled-CPU performance, offline, background/resume, tilt fallback.
+
+## 3. QA outcome (emulated devices, 1.1.0)
+
+| Check | Result |
+|---|---|
+| Layout matrix: 640×360, 720×360, 800×360, 844×390, 932×430 (DPR 3 and DPR 1) and 360×640, 390×844, 430×932 portrait; every menu, the garage sheet, the race HUD, pause and results | No horizontal scroll, no off-screen or clipped controls, no HUD overlaps, tap targets ≥ 40 px. Fixed on the way: grid overflow at 640×360, clipped settings controls and a truncated header at 360 px. |
+| Portrait during a race | Rotate overlay and auto-pause at all three portrait sizes; menus usable upright. |
+| Touch only | Every tile/back, garage arrows, one-tap PLAY, tutorial completed by touch (steer → brake → near miss → boost), one-tap restart. |
+| Background / foreground | Hidden → paused, audio suspended, save written, no simulation; visible → pause screen; resume → 3-2-1 countdown with the world frozen. |
+| Tilt | Without a sensor: clear note, touch steering kept. With a (synthetic) sensor: activates on the first reading; ±15° wheel roll → ±0.65 steer; recenters to 0. |
+| Low graphics | Level low, canvas at 1× (844×390 at DPR 3), particle budget 140. |
+| Performance (4× / 6× CPU throttle, worst case) | AUTO 56–58 / ~53 FPS; render CPU 4.5 / 5.7 ms per frame. |
+| Memory (20 restarts) | Heap 3.4–4.0 MB flat; listeners, nodes, AudioContext, intervals and rAF rate constant. |
+| PWA | Installable, 68 files precached, offline race works, "Local only" chip. |
+
+Not covered by emulation: real touch latency and palm rejection, thermal throttling over long sessions, real GPUs' fill rate, iOS Safari (no Fullscreen API on iPhone, no vibration, motion-permission prompt), notches and gesture bars on physical devices, audio interruptions by real calls. These are the goals of the device beta.
