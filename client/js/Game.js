@@ -1,5 +1,5 @@
 import { CAMERA, PLAYER, ROAD, GAME, BEAM, PERF, laneCenter } from './config.js';
-import { DIFFICULTY, DAMAGE, PICKUPS, SCORE, CARS, UPGRADES } from './balance.js';
+import { DIFFICULTY, DAMAGE, PICKUPS, SCORE, CARS, UPGRADES, CONTACT, COMBO_MILESTONES, SKILL } from './balance.js';
 import { clamp, lerp, rand, randInt, sign } from './utils.js';
 import { Camera } from './Camera.js';
 import { Road } from './Road.js';
@@ -13,6 +13,10 @@ import { PARTICLE } from './ParticleSystem.js';
 import { SkillSystem } from './SkillSystem.js';
 import { ScoreSystem } from './ScoreSystem.js';
 import { EventDirector } from './EventDirector.js';
+import { PoliceSystem } from './PoliceSystem.js';
+import { RivalRacer } from './RivalRacer.js';
+import { RunDirector } from './RunDirector.js';
+import { DevPanel } from './DevPanel.js';
 import { Goals } from './Goals.js';
 import { dateKey } from './Rng.js';
 import { AudioManager } from './AudioManager.js';
@@ -95,7 +99,14 @@ export class Game {
     this.skills = new SkillSystem(this);
     this.audio = new AudioManager(this.save.settings);
     this.weather = new Weather(this.audio);
+    // Run pacing: telemetry (dev) → police/heat → rival → events → the director over all of them.
+    this.telemetry = [];
+    this.police = new PoliceSystem(this);
+    this.rival = new RivalRacer(this);
     this.events = new EventDirector(this);
+    this.director = new RunDirector(this);
+    this.flow = false;
+    this.closeCallTimer = 0;
     this.input = new InputManager();
     this.haptics = new Haptics();
     this.tutorial = null; // set while the first-race tutorial runs
@@ -161,6 +172,7 @@ export class Game {
     // Developer performance monitor: only with ?debug in the URL, toggled with F.
     // Never available in production builds.
     this.debug = !ENV.isProduction && new URLSearchParams(location.search).has('debug');
+    this.devPanel = this.debug ? new DevPanel(this) : null; // development only, never in production
     this.input.onToggleFps = () => {
       if (this.debug) this.ui.setFpsVisible(!this.ui.fpsVisible);
     };
@@ -417,7 +429,12 @@ export class Game {
     this.effects.reset();
     this.score.reset();
     this.skills.reset();
+    this.telemetry.length = 0;
+    this.police.reset();
     this.events.reset();
+    this.director.reset(Date.now());
+    this.flow = false;
+    this.closeCallTimer = 0;
     this.goals.resetRun();
     this.camera.reset();
     this.difficulty = 0;
@@ -710,7 +727,7 @@ export class Game {
     this.haptics.pulse('crash');
     this.camera.fovOverride = 0.12; // pull in on the wreck
     this.audio.crash(1.2);
-    this.audio.siren(false);
+    this.audio.sirenLevel(0);
     this.audio.setMusicMode('wreck');
     this.ui.hideBanner();
     this.hideIntro();
@@ -778,6 +795,11 @@ export class Game {
       boostTime: r1(s.boostTime),
       highSpeedTime: r1(s.highSpeedTime),
       bestCleanDistance: Math.round(s.bestCleanDistance),
+      escapeStars: s.escapeStars,
+      heatEscaped: s.heatEscaped,
+      maxHeat: this.police.stats.maxHeat,
+      rivalsBeaten: s.rivalsBeaten,
+      challenges: s.challenges,
     };
   }
 
@@ -823,6 +845,8 @@ export class Game {
       distance: run.distance,
       bestCombo: run.bestMultiplier,
       topSpeed: run.topSpeed,
+      chase: this.chaseLine(run),
+      hint: this.nextRunHint(run, newBest),
       creditsTotal: result.creditsTotal,
       xp: result.xp,
       level: result.levelAfter,
@@ -834,6 +858,31 @@ export class Game {
       goal: this.progression.nextGoal(),
       upgradeReady: Boolean(up && up.affordable),
     };
+  }
+
+  // Results: one line about the pursuit, only when the police got involved.
+  chaseLine(run) {
+    const p = this.police.stats;
+    if (p.maxHeat < 1) return null;
+    const parts = [];
+    if (run.policeEscapes) parts.push(`${run.policeEscapes} escape${run.policeEscapes > 1 ? 's' : ''} · best ${run.heatEscaped}★`);
+    if (p.busted) parts.push('busted');
+    if (p.longestChase) parts.push(`longest chase ${p.longestChase}s`);
+    parts.push(`max heat ${p.maxHeat}★`);
+    return `Pursuit · ${parts.join(' · ')}`;
+  }
+
+  // Results: one concrete, contextual thing to try next run (the next-goal card covers cars).
+  nextRunHint(run, newBest) {
+    const rec = this.progress.records;
+    const p = this.police.stats;
+    const best = rec.score;
+    if (p.busted) return `Busted at ${p.maxHeat}★ — pass the units and pull away to fill the escape meter.`;
+    if (p.maxHeat >= 2 && !run.policeEscapes) return `Escape a ${p.maxHeat}★ pursuit: bigger heat, bigger payout.`;
+    if (run.policeEscapes && run.heatEscaped < 5 && run.heatEscaped >= (rec.heat || 0)) return `Next: escape at ${run.heatEscaped + 1}★ — roadblocks and rams from 4★.`;
+    if (!newBest && best > 0 && run.score >= best * 0.7) return `${this.ui.format(best - run.score)} short of your best score.`;
+    if (p.maxHeat < 2) return 'Drive fast and close to traffic to build heat — the police pay well.';
+    return null;
   }
 
   // The cloud copy of the progress replaced the local one (sync, pull, account recovery).
@@ -868,7 +917,13 @@ export class Game {
       const t = 1 - Math.max(0, this.crashTimer) / GAME.CRASH_SLOWMO;
       this.timeScale = lerp(GAME.CRASH_TIMESCALE, 1, t * t);
     }
-    const sim = dt * this.timeScale;
+    // A rare cinematic close call: a split second of slow motion (real time).
+    let scale = this.timeScale;
+    if (this.closeCallTimer > 0) {
+      this.closeCallTimer -= dt;
+      scale *= SKILL.CLOSE_CALL_SCALE;
+    }
+    const sim = dt * scale;
     const p = this.player;
     const playing = this.state === STATE.PLAYING;
     if (playing) this.runTime += dt;
@@ -895,7 +950,13 @@ export class Game {
       this.rainLevel = rainLevel;
       this.audio.rain(rainLevel / 10);
     }
-    if (playing) this.events.update(sim);
+    if (playing) {
+      this.director.update(sim);
+      this.events.update(sim);
+    }
+    this.police.update(sim);
+    this.score.scale = this.police.scoreScale * (this.flow ? COMBO_MILESTONES.FLOW_SCORE : 1);
+    if (playing) this.updateFlow();
     this.traffic.update(sim, p.speed, traveled, this.difficulty, p.x);
     this.pickups.update(sim, p.speed, traveled, this.traffic, playing, p.health < PLAYER.MAX_HEALTH);
 
@@ -931,9 +992,11 @@ export class Game {
 
   musicIntensity(kmh) {
     if (!this.isRaceActive()) return 0;
-    let v = clamp((kmh - 100) / 220, 0, 1) * 0.5 + this.score.tier * 0.08;
-    if (this.player.boosting) v += 0.15;
-    if (this.events.police.active) v = Math.max(v, 0.85);
+    let v = clamp((kmh - 100) / 220, 0, 1) * 0.45 + this.score.tier * 0.07 + this.director.intensity / 400;
+    if (this.player.boosting) v += 0.12;
+    if (this.police.active) v = Math.max(v, 0.7 + this.police.level * 0.06);
+    if (this.flow) v = Math.max(v, 0.92);
+    if (this.police.releaseTimer > 0) v = Math.min(v, 0.35); // escape: a moment of release
     return clamp(v, 0, 1);
   }
 
@@ -1123,12 +1186,23 @@ export class Game {
       car.wobble = 1;
       if (car.patternSlot >= 0) this.traffic.resolvePattern(car, true);
     }
+    // Graded contact: a light side scrape costs speed and a combo tier, not the run.
+    const scrape = sideHit && penX < CONTACT.SCRAPE_MAX_PEN && !car.police;
+    if (scrape) {
+      damage = CONTACT.SCRAPE_DAMAGE;
+      p.speed *= CONTACT.SCRAPE_SPEED_KEEP;
+    }
     if (this.tutorial) damage *= 0.5; // first-race lessons: hits hurt, but can't end the run
     p.takeDamage(damage);
     if (this.tutorial && p.health < 30) p.health = 30;
-    const lost = this.score.breakCombo();
+    const lost = scrape ? this.score.dropTiers(CONTACT.SCRAPE_COMBO_TIERS)
+      : sideHit ? this.score.dropTiers(CONTACT.SIDE_COMBO_TIERS) : this.score.breakCombo();
+    if (!scrape) this.score.stats.cleanDistance = 0;
     this.score.stats.crashes++;
     this.events.onCrash();
+    this.police.onCrash(car);
+    this.endFlow();
+    if (scrape) this.ui.feed.push('SCRAPE', 0, 'routine', 'danger', 'scrape');
     this.effects.flash.damage = 1;
     this.camera.addTrauma(sideHit ? 0.4 : 0.65);
     this.input.rumble(sideHit ? 0.45 : 0.75, 180);
@@ -1140,6 +1214,53 @@ export class Game {
     this.effects.impact(ps.x + dir * ps.w * (sideHit ? 0.5 : 0.2), ps.y - ps.h * (sideHit ? 0.4 : 0.9), ps.scale, !sideHit);
     if (lost > 1) this.audio.comboDown(); // the combo block shakes and drops (UIManager.comboPulse)
     if (p.health <= 0) this.beginCrashSequence(-dir);
+  }
+
+  // Roadwork cones: knocked flying — sparks, a little speed and hull, no crash.
+  hitCones(car, dx) {
+    const p = this.player;
+    if (p.invulnerable > 0) return;
+    p.speed *= CONTACT.CONE_SPEED_KEEP;
+    p.takeDamage(CONTACT.CONE_DAMAGE);
+    p.invulnerable = 0.5;
+    p.instability = 0;
+    this.score.dropTiers(1);
+    this.events.onCrash();
+    const ps = this.playerScreen;
+    this.effects.impact(ps.x + sign(dx) * ps.w * 0.4, ps.y - ps.h * 0.3, ps.scale, false);
+    this.audio.scrape();
+    this.haptics.pulse('tap');
+    this.camera.addTrauma(0.2);
+    this.ui.feed.push('CONES', 0, 'routine', 'amber', 'cones');
+  }
+
+  // FLOW: at x10 the game tells you you're driving brilliantly — score and boost peak, music
+  // and speed sensation rise. Not invincibility: any collision ends it.
+  updateFlow() {
+    const m = this.score.multiplier;
+    if (!this.flow && m >= COMBO_MILESTONES.FLOW_AT) {
+      this.flow = true;
+      this.ui.feed.push('FLOW', 0, 'major', 'gold', 'flow');
+      this.ui.setFlow(true);
+      this.audio.flow(true);
+      this.haptics.pulse('unlock');
+      this.telemetry.push({ t: this.runTime, what: 'flow:start' });
+    } else if (this.flow && m < COMBO_MILESTONES.FLOW_KEEP) {
+      this.endFlow();
+    }
+  }
+
+  endFlow() {
+    if (!this.flow) return;
+    this.flow = false;
+    this.ui.setFlow(false);
+    this.audio.flow(false);
+    this.telemetry.push({ t: this.runTime, what: 'flow:end' });
+  }
+
+  closeCall() {
+    this.closeCallTimer = SKILL.CLOSE_CALL_TIME;
+    this.telemetry.push({ t: this.runTime, what: 'closeCall' });
   }
 
   updatePlayerScreen() {
@@ -1211,6 +1332,8 @@ export class Game {
     d.lowHealth = p.health < PLAYER.LOW_HEALTH;
     d.slipstream = p.slipstream > 0.5;
     this.ui.updateHud(d);
+    const police = this.police;
+    this.ui.updatePolice(police.level, police.heat, police.chase, police.radar, police.alert);
   }
 
   // ---------------------------------------------------------------- render
@@ -1234,7 +1357,7 @@ export class Game {
     this.road.renderFog(ctx, cam);
     this.events.renderMarkers(ctx, cam, this.road);
     this.renderEntities(ctx);
-    this.events.renderPolice(ctx, cam, this.road);
+    this.police.renderGlow(ctx, cam);
     this.effects.renderWorld(ctx);
     ctx.restore();
 

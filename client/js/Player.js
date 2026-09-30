@@ -37,6 +37,10 @@ export class Player {
     this.scraping = false;
     this.scrapeSide = 0;
     this.slipstream = 0;
+    this.surge = 0; // slingshot: extra speed allowance (m/s) …
+    this.surgeTimer = 0; // … for this long
+    this.punctureTimer = 0; // spike strip: seconds of reduced grip left
+    this.punctureGrip = 1;
     this.lateralLimit = this.profile.lateralMin;
     this.time = 0;
   }
@@ -77,13 +81,17 @@ export class Player {
     } else {
       this.tilt = damp(this.tilt, (this.vx / pr.lateralMax) * PLAYER.TILT_MAX, 10, dt);
     }
+    if (this.surgeTimer > 0) this.surgeTimer -= dt;
+    if (this.punctureTimer > 0) this.punctureTimer -= dt;
     if (this.invulnerable > 0) this.invulnerable -= dt;
     if (this.instability > 0) this.instability -= dt;
   }
 
   updateSpeed(dt, controls, max, cruise) {
     const pr = this.profile;
-    const top = this.boosting ? max + pr.boostKmh / 3.6 : max;
+    const base = this.boosting ? max + pr.boostKmh / 3.6 : max;
+    this.baseTop = base;
+    const top = base + (this.surgeTimer > 0 ? this.surge : 0);
     if (controls.brake) {
       this.speed -= pr.brake * dt;
     } else if (this.boosting || controls.throttle) {
@@ -108,14 +116,15 @@ export class Player {
     const pr = this.profile;
     // Steering authority grows with speed, but a parked car can't slide sideways.
     const lowSpeedFactor = clamp(this.speed / 20, 0, 1);
-    this.lateralLimit = lerp(pr.lateralMin, pr.lateralMax, clamp(this.speed / max, 0, 1)) * lowSpeedFactor * this.grip;
+    const grip = this.grip * (this.punctureTimer > 0 ? this.punctureGrip : 1);
+    this.lateralLimit = lerp(pr.lateralMin, pr.lateralMax, clamp(this.speed / max, 0, 1)) * lowSpeedFactor * grip;
     let target = this.wrecked ? 0 : steer * this.lateralLimit;
     if (this.instability > 0) {
       // Post-impact wobble: a decaying oscillation the player can steer through.
       const k = this.instability / DAMAGE.INSTABILITY_TIME;
       target += Math.sin(this.time * 19) * DAMAGE.INSTABILITY_STEER * this.lateralLimit * k;
     }
-    const response = (steer !== 0 ? pr.steerResponse : pr.steerRelease) * (0.55 + 0.45 * this.grip);
+    const response = (steer !== 0 ? pr.steerResponse : pr.steerRelease) * (0.55 + 0.45 * grip);
     this.vx = damp(this.vx, target, response, dt);
     // Centrifugal drift pushes the car toward the outside of bends.
     this.x += this.vx * dt - curve * this.speed * this.speed * PLAYER.CENTRIFUGAL * dt;
@@ -129,6 +138,21 @@ export class Player {
       this.scraping = this.speed > 8;
       this.speed -= this.speed * PLAYER.WALL_FRICTION * dt;
     }
+  }
+
+  // Slingshot out of a slipstream: a short surge above top speed.
+  slingshot(kmh, time) {
+    this.surge = kmh / 3.6;
+    this.surgeTimer = time;
+    // Chained slingshots never stack beyond one surge over the current top speed.
+    this.speed = Math.max(this.speed, Math.min(this.speed + this.surge * 0.6, (this.baseTop || this.speed) + this.surge));
+  }
+
+  // Spike strip: slower and less grip for a few seconds — hurts, never ends the run by itself.
+  puncture(time, grip, speedKeep) {
+    this.punctureTimer = time;
+    this.punctureGrip = grip;
+    this.speed *= speedKeep;
   }
 
   addBoost(amount) {

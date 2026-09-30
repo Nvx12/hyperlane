@@ -1,12 +1,14 @@
 import { ROAD, CAMERA, TRAFFIC, laneCenter } from './config.js';
-import { VEHICLE_TYPES, PERSONALITIES, DIFFICULTY, RARE_TRAFFIC } from './balance.js';
+import { VEHICLE_TYPES, PERSONALITIES, DIFFICULTY, RARE_TRAFFIC, FORMATIONS } from './balance.js';
 import { clamp, lerpRange, rand, randInt, approach, damp } from './utils.js';
 
 const FULL_MASK = (1 << ROAD.LANES) - 1;
 const TYPE_KEYS = Object.keys(VEHICLE_TYPES);
 
 export const BARRIER_ROADWORK = 'roadwork';
-export const BARRIER_CHECKPOINT = 'checkpoint';
+export const BARRIER_ROADBLOCK = 'roadblock'; // parked police cars
+export const BARRIER_SPIKES = 'spikes'; // spike strip: no crash, punctured tires
+export const BARRIER_ACCIDENT = 'accident'; // wrecked cars + flares
 
 class Vehicle {
   constructor() {
@@ -41,7 +43,16 @@ class Vehicle {
     this.patternSlot = -1;
     this.rare = false;
     this.barrier = null; // static road obstacle style, or null for a driving vehicle
-    this.openLane = -1; // checkpoint: the lane left open (for rendering the green marker)
+    this.openLane = -1;
+    // Special units (police, rival): their own controller drives them instead of traffic AI.
+    this.controller = null;
+    this.police = false;
+    this.lights = false; // police light bar on
+    this.role = '';
+    this.ai = {};
+    this.forceDir = 0; // formation "moving gap": this car will change lanes (signalled) …
+    this.forceAt = 0; // … once it is this close to the player
+    this.label = '';
   }
 }
 
@@ -61,6 +72,10 @@ export class TrafficManager {
     this.onPatternDone = null;
     this.spawnEnabled = false;
     this.densityScale = 1; // >1 spawns more often (heavy traffic), <1 less (open highway)
+    // 0..1 traffic pressure from the RunDirector's intensity: density, lane changes and random
+    // patterns follow it (so the road breathes); car speeds still follow run difficulty.
+    this.pressure = 0.3;
+    this.ambientPatterns = true; // the director turns random chicanes off when it runs formations
     this.untilWave = 0;
     this.wallCheckTimer = 0;
     this.band = TRAFFIC.WALL_BAND;
@@ -74,6 +89,7 @@ export class TrafficManager {
     this.vehicles.length = 0;
     this.spawnEnabled = false;
     this.densityScale = 1;
+    this.pressure = 0.3;
     this.untilWave = TRAFFIC.FIRST_WAVE_DISTANCE;
     this.wallCheckTimer = 0;
   }
@@ -83,12 +99,13 @@ export class TrafficManager {
     this.playerX = playerX;
     // Length of road that must never be fully blocked: grows with closing speed so walls stay escapable.
     this.band = TRAFFIC.WALL_BAND + Math.max(8, playerSpeed - 25) * lerpRange(DIFFICULTY.SAFE_TIME, difficulty);
-    const laneChangeRate = lerpRange(DIFFICULTY.LANE_CHANGE, difficulty);
+    const laneChangeRate = lerpRange(DIFFICULTY.LANE_CHANGE, this.pressure);
     const list = this.vehicles;
 
     for (let i = 0; i < list.length; i++) {
       const car = list[i];
       if (car.barrier) this.updateBarrier(car, dt, playerSpeed);
+      else if (car.controller) car.controller.updateUnit(car, dt, playerSpeed);
       else this.updateVehicle(car, dt, playerSpeed, laneChangeRate);
     }
 
@@ -97,14 +114,17 @@ export class TrafficManager {
       const rel = car.z - CAMERA.PLAYER_DEPTH;
       if (car.prevRel > 0 && rel <= 0 && this.onPass && !car.barrier) this.onPass(car);
       car.prevRel = rel;
-      if (car.z < TRAFFIC.DESPAWN_BEHIND || car.z > ROAD.DRAW_DISTANCE + TRAFFIC.DESPAWN_AHEAD + car.length) this.despawn(i);
+      if (car.z < TRAFFIC.DESPAWN_BEHIND || car.z > ROAD.DRAW_DISTANCE + TRAFFIC.DESPAWN_AHEAD + car.length) {
+        if (car.controller && car.controller.onDespawn) car.controller.onDespawn(car);
+        this.despawn(i);
+      }
     }
 
     if (!this.spawnEnabled) return;
     this.untilWave -= traveled * this.densityScale;
     if (this.untilWave <= 0) {
       this.spawnWave(difficulty, playerSpeed);
-      this.untilWave = lerpRange(DIFFICULTY.SPAWN_GAP, difficulty) * rand(0.7, 1.3);
+      this.untilWave = lerpRange(DIFFICULTY.SPAWN_GAP, this.pressure) * rand(0.7, 1.3);
     }
     this.wallCheckTimer -= dt;
     if (this.wallCheckTimer <= 0) {
@@ -171,6 +191,17 @@ export class TrafficManager {
     car.blinkDir = 0;
     if (car.changeCooldown > 0) return;
 
+    if (car.forceDir !== 0 && depth < car.forceAt && depth > TRAFFIC.LANE_CHANGE_MIN_DEPTH) {
+      const dir = car.forceDir;
+      car.forceDir = 0;
+      if (this.canMoveTo(car, car.lane + dir)) {
+        car.pendingLane = car.lane + dir;
+        car.blinkDir = dir;
+        car.blinkTimer = Math.max(TRAFFIC.MIN_BLINK_TIME, car.personality.blink);
+        car.changeCooldown = 4;
+        return;
+      }
+    }
     // Cars stuck behind a road barrier merge as soon as it's fair; everyone else only far ahead.
     const barrierAhead = leader !== null && leader.barrier !== null && leader.z - car.z < 140;
     if (depth < (barrierAhead ? TRAFFIC.LANE_CHANGE_MIN_DEPTH + 10 : TRAFFIC.LANE_CHANGE_START_DEPTH)) return;
@@ -257,12 +288,12 @@ export class TrafficManager {
       for (let k = 0; k < ROAD.LANES; k++) if (this.trySpawn('legend', this.laneOrder[k], spawnZ, difficulty, -1)) return;
     }
 
-    if (difficulty > DIFFICULTY.PATTERN_MIN && Math.random() < DIFFICULTY.PATTERN_CHANCE) {
+    if (this.ambientPatterns && this.pressure > DIFFICULTY.PATTERN_MIN && Math.random() < DIFFICULTY.PATTERN_CHANCE) {
       this.spawnChicane(difficulty, spawnZ);
       return;
     }
 
-    const maxCars = lerpRange(DIFFICULTY.MAX_PER_WAVE, difficulty) * Math.min(1.3, this.densityScale);
+    const maxCars = lerpRange(DIFFICULTY.MAX_PER_WAVE, this.pressure) * Math.min(1.3, this.densityScale);
     const count = Math.min(ROAD.LANES - 1, 1 + Math.floor(Math.random() * maxCars));
     this.shuffleLanes();
     for (let k = 0; k < count; k++) {
@@ -310,13 +341,109 @@ export class TrafficManager {
     return !p.failed;
   }
 
-  trySpawn(typeKey, lane, z, difficulty, patternSlot) {
+  // ---------------------------------------------------------------- formations
+  // Designed situations the RunDirector asks for. Each one leaves at least one open lane (the
+  // wall rule in canPlace still applies to every car) and returns what it built, or null.
+  //   gate       two cars with one lane between them: the squeeze (risk) vs the open lane (safe)
+  //   stagger    a diagonal across three lanes (weave)
+  //   truckWall  two trucks side by side, a car covering a third lane a little later
+  //   pack       three slow cars staggered across three lanes (an overtaking puzzle)
+  //   movingGap  two cars side by side; one signals and moves over, opening a gap that moves
+  spawnFormation(kind, difficulty) {
+    const z = TRAFFIC.SPAWN_DEPTH;
+    const sp = FORMATIONS.SPACING;
+    const L = ROAD.LANES;
+    const type = () => this.pickType(difficulty);
+    const out = { kind, gapLane: -1, z };
+    let placed = 0;
+    const put = (t, lane, dz, opts) => {
+      if (lane < 0 || lane >= L) return false;
+      const ok = this.trySpawn(t, lane, z + dz, difficulty, -1, opts);
+      if (ok) placed++;
+      return ok;
+    };
+    switch (kind) {
+      case 'gate': {
+        const a = randInt(0, L - 3);
+        put(type(), a, 0);
+        put(type(), a + 2, 0);
+        out.gapLane = a + 1;
+        break;
+      }
+      case 'stagger':
+        this.spawnChicane(difficulty, z);
+        return { kind, gapLane: -1, z };
+      case 'truckWall': {
+        const a = randInt(0, L - 2);
+        put('truck', a, 0);
+        put('truck', a + 1, 4);
+        const side = a === 0 ? a + 2 : a + 1 >= L - 1 ? a - 1 : (Math.random() < 0.5 ? a - 1 : a + 2);
+        put(type(), side, sp * 1.4);
+        break;
+      }
+      case 'pack': {
+        const a = randInt(0, L - 3);
+        for (let k = 0; k < 3; k++) put(Math.random() < 0.3 ? 'suv' : 'sedan', a + k, k * 11 + rand(0, 6), { personality: 'slow' });
+        break;
+      }
+      case 'movingGap': {
+        const a = randInt(0, L - 2);
+        const dir = a + 2 < L ? 1 : -1;
+        const mover = dir > 0 ? a + 1 : a;
+        put(type(), a, 0);
+        put(type(), a + 1, 0);
+        const car = this.vehicles.find(c => c.lane === mover && Math.abs(c.z - z) < 1);
+        if (car) {
+          car.forceDir = dir;
+          car.forceAt = rand(110, 170);
+        }
+        break;
+      }
+      default:
+        return null;
+    }
+    return placed > 0 ? out : null;
+  }
+
+  // Special units (police, rival) share the pool, collisions and rendering with traffic but are
+  // driven by their own controller. Never placed on top of another vehicle.
+  spawnUnit({ typeKey, sprites, width, length, lane, z, speed, controller, police = false, role = '', label = '' }) {
+    if (!this.isLaneClear(lane, z, length, length)) return null;
+    const car = this.acquire();
+    if (!car) return null;
+    car.active = true;
+    car.typeKey = typeKey;
+    car.spec = { width, length, height: 1.35 };
+    car.personalityKey = 'normal';
+    car.personality = PERSONALITIES.normal;
+    car.sprites = sprites;
+    car.width = width;
+    car.length = length;
+    car.lane = lane;
+    car.targetLane = lane;
+    car.pendingLane = -1;
+    car.x = laneCenter(lane);
+    car.z = z;
+    car.speed = speed;
+    car.baseSpeed = speed;
+    this.resetState(car, z);
+    car.sortZ = z - length * 0.5;
+    car.controller = controller;
+    car.police = police;
+    car.lights = police;
+    car.role = role;
+    car.label = label;
+    this.vehicles.push(car);
+    return car;
+  }
+
+  trySpawn(typeKey, lane, z, difficulty, patternSlot, opts = null) {
     const spec = VEHICLE_TYPES[typeKey];
     if (!this.canPlace(lane, z, spec.length)) return false;
     const car = this.acquire();
     if (!car) return false;
     const variants = this.bank.vehicles[typeKey];
-    const pKey = this.pickPersonality(spec, difficulty);
+    const pKey = opts && opts.personality && spec.personalities[opts.personality] !== undefined ? opts.personality : this.pickPersonality(spec, difficulty);
     car.active = true;
     car.typeKey = typeKey;
     car.spec = spec;
@@ -357,6 +484,14 @@ export class TrafficManager {
     car.rare = false;
     car.barrier = null;
     car.openLane = -1;
+    car.controller = null;
+    car.police = false;
+    car.lights = false;
+    car.role = '';
+    car.ai = {};
+    car.forceDir = 0;
+    car.forceAt = 0;
+    car.label = '';
   }
 
   // Static obstacle occupying one lane over `length` meters (road events). Ignores the wall rule
@@ -491,6 +626,16 @@ export class TrafficManager {
     }
 
     const L = sprite.lights;
+    if (car.lights) {
+      // Police light bar: alternating red/blue, bright enough to read from far away.
+      const on = (this.time * 5) % 1 < 0.5;
+      const barY = sy - 1.45 * s;
+      const r = Math.max(5, 1.1 * s);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.drawImage(on ? this.bank.glow.red : this.bank.glow.blue, sx - 0.45 * s - r, barY - r, r * 2, r * 2);
+      ctx.drawImage(on ? this.bank.glow.blue : this.bank.glow.red, sx + 0.45 * s - r, barY - r, r * 2, r * 2);
+      ctx.globalCompositeOperation = 'source-over';
+    }
     if (car.rare) {
       // Golden car shimmer so rare traffic reads from far away.
       ctx.globalCompositeOperation = 'lighter';
@@ -551,6 +696,45 @@ export class TrafficManager {
           ctx.globalCompositeOperation = 'source-over';
         }
       }
+    } else if (car.barrier === BARRIER_SPIKES && rear >= near) {
+      // Flat spike strip across the lane with warning lights at both ends.
+      const s = cam.focal / rear;
+      const x = cam.cx + (car.x + road.offsetAt(rear) - cam.x) * s;
+      const y = cam.horizonY + CAMERA.HEIGHT * s;
+      const spikes = this.bank.props.spikes;
+      const sw = ROAD.LANE_WIDTH * 0.95 * s;
+      const sh = sw * (spikes.height / spikes.width);
+      ctx.globalAlpha = rear > fadeStart ? Math.max(0, 1 - (rear - fadeStart) / (ROAD.DRAW_DISTANCE - fadeStart)) : 1;
+      ctx.drawImage(spikes, x - sw / 2, y - sh, sw, sh);
+      ctx.globalCompositeOperation = 'lighter';
+      const r = 0.9 * s;
+      ctx.drawImage(this.bank.glow.amber, x - sw / 2 - r, y - r * 1.2, r * 2, r * 2);
+      ctx.drawImage(this.bank.glow.amber, x + sw / 2 - r, y - r * 1.2, r * 2, r * 2);
+      ctx.globalCompositeOperation = 'source-over';
+    } else if ((car.barrier === BARRIER_ROADBLOCK || car.barrier === BARRIER_ACCIDENT) && rear >= near) {
+      // Parked police cars (lights on) or wrecked cars (hazard flares) filling the lane.
+      const s = cam.focal / rear;
+      const x = cam.cx + (car.x + road.offsetAt(rear) - cam.x) * s;
+      const y = cam.horizonY + CAMERA.HEIGHT * s;
+      const police = car.barrier === BARRIER_ROADBLOCK;
+      const sprite = police ? this.bank.police.normal : this.bank.wreck;
+      const k = s / sprite.ppm;
+      ctx.globalAlpha = rear > fadeStart ? Math.max(0, 1 - (rear - fadeStart) / (ROAD.DRAW_DISTANCE - fadeStart)) : 1;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(police ? (car.lane % 2 ? 0.22 : -0.22) : (car.lane % 2 ? 0.5 : -0.4));
+      ctx.drawImage(sprite.canvas, -sprite.anchorX * k, -sprite.anchorY * k, sprite.canvas.width * k, sprite.canvas.height * k);
+      ctx.restore();
+      ctx.globalCompositeOperation = 'lighter';
+      const r = 1.1 * s;
+      if (police) {
+        ctx.drawImage(flash ? this.bank.glow.red : this.bank.glow.blue, x - 0.5 * s - r, y - 1.5 * s - r, r * 2, r * 2);
+        ctx.drawImage(flash ? this.bank.glow.blue : this.bank.glow.red, x + 0.5 * s - r, y - 1.5 * s - r, r * 2, r * 2);
+      } else if (flash) {
+        ctx.drawImage(this.bank.glow.red, x - 1.2 * s - r, y - r, r * 2, r * 2);
+        ctx.drawImage(this.bank.glow.amber, x + 1.2 * s - r, y - r, r * 2, r * 2);
+      }
+      ctx.globalCompositeOperation = 'source-over';
     } else if (rear >= near) {
       const s = cam.focal / rear;
       const x = cam.cx + (car.x + road.offsetAt(rear) - cam.x) * s;

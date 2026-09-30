@@ -28,7 +28,8 @@ quadratically — steady, never exponential. In the simulation: level 2 after on
 after ~31 casual runs, level 20 after ~156. Max level 40.
 
 XP per run = 30 + 11/km + 0.8 per 1,000 score + 8 per near miss + 6 per perfect overtake +
-8 per chicane + 40 per police escape + 5…100 for the best combo tier, soft-capped at
+8 per chicane + 15 per police escape (+12 per heat star escaped) + 40 per rival beaten + 15 per
+challenge + 5…100 for the best combo tier, soft-capped at
 `700 + 45·level` (35% beyond, never more than twice the cap). Missions, the daily challenge and
 achievements add their own XP.
 
@@ -38,7 +39,8 @@ cosmetics, routes and the world tour — never basic gameplay.
 ## Credits (the only currency)
 
 Earned: distance (8/km), score (1.2 per 1,000), overtakes (0.25, perfect 6), near misses (8,
-insane +10), best combo tier (15…200), chicanes (10), police escapes (100), legend passes (100),
+insane +10), best combo tier (15…200), chicanes (10), police escapes (40 + 40 per heat star:
+★2 = 120, ★5 = 240), rivals beaten (120), challenges (40), legend passes (100),
 credit chips (50), a new best score (100), missions, the daily challenge, achievements.
 Per-run soft cap `900 + 60·level`.
 
@@ -84,27 +86,28 @@ cheapest upgrade, drive their best car, and play 10 / 16 / 24 runs a day. Median
 hours of play (runs + ~25 s of menus each), and day:
 
 ```
-300 simulated players per type · 1260 recorded runs · runs per day: casual 10, skilled 16, expert 24
+200 simulated players per type · 1260 recorded runs · runs per day: casual 10, skilled 16, expert 24
 
 milestone                           casual                        skilled                       expert                        
-First upgrade                       run 1 (1–3) 0.0h d1           run 1 (1–3) 0.1h d1           run 2 (1–4) 0.1h d1           
-Level 5                             run 6 (4–9) 0.3h d1           run 6 (4–8) 0.2h d1           run 5 (3–7) 0.2h d1           
-First new car (Kestrel GT, Sport)   run 4 (2–6) 0.2h d1           run 3 (1–4) 0.1h d1           run 3 (1–4) 0.1h d1           
-Level 10                            run 31 (26–36) 1.1h d4        run 28 (25–32) 1.0h d2        run 25 (22–28) 1.0h d2        
-2nd sport car (Bruiser V8)          run 23 (18–29) 0.8h d3        run 20 (17–24) 0.7h d2        run 18 (15–21) 0.7h d1        
-Performance car (Wisp LT)           run 58 (52–66) 2.0h d6        run 53 (50–59) 1.9h d4        run 49 (44–53) 1.8h d3        
-Supercar (Stiletto R)               run 177 (165–190) 5.6h d18    run 137 (129–148) 4.7h d9     run 126 (117–137) 4.6h d6     
-Level 20                            run 156 (147–169) 5.0h d16    run 123 (115–132) 4.2h d8     run 114 (105–123) 4.1h d5     
-Hypercar (Aurora X)                 run 431 (409–449) 12.2h d44   run 420 (404–439) 11.9h d27   run 341 (323–362) 11.0h d15   
-Level 30                            run 385 (368–402) 11.0h d39   run 364 (351–378) 10.4h d23   run 304 (290–320) 9.8h d13    
-Legendary (Phantom Zero)            run 667 (645–690) 18.0h d67   run 671 (646–702) 17.8h d42   run 595 (568–617) 17.0h d25
+First upgrade                       run 1 (1–2) 0.0h d1           run 1 (1–3) 0.0h d1           run 1 (1–2) 0.0h d1           
+Level 5                             run 8 (6–11) 0.3h d1          run 6 (4–9) 0.2h d1           run 5 (3–7) 0.2h d1           
+First new car (Kestrel GT, Sport)   run 5 (3–7) 0.2h d1           run 3 (1–6) 0.1h d1           run 2 (1–4) 0.1h d1           
+Level 10                            run 36 (30–41) 1.0h d4        run 28 (24–34) 0.9h d2        run 24 (20–27) 0.8h d1        
+2nd sport car (Bruiser V8)          run 26 (20–36) 0.8h d3        run 21 (16–29) 0.7h d2        run 16 (12–23) 0.6h d1        
+Performance car (Wisp LT)           run 71 (61–80) 2.0h d8        run 53 (46–60) 1.6h d4        run 47 (40–54) 1.6h d2        
+Supercar (Stiletto R)               run 176 (165–189) 4.8h d18    run 138 (127–149) 4.3h d9     run 112 (100–124) 3.8h d5     
+Level 20                            run 160 (148–172) 4.4h d16    run 126 (115–136) 4.0h d8     run 103 (92–114) 3.5h d5      
+Hypercar (Aurora X)                 run 440 (420–461) 11.0h d44   run 354 (337–378) 9.9h d23    run 290 (273–308) 8.9h d13    
+Level 30                            run 396 (380–415) 10.0h d40   run 321 (300–341) 9.0h d21    run 264 (245–278) 8.1h d11    
+Legendary (Phantom Zero)            run 699 (674–724) 16.5h d70   run 564 (532–593) 14.6h d36   run 469 (442–497) 13.1h d20
 ```
 
 Reading it: the first upgrade comes in the first run or two and the first new car in 3–4 runs;
 the second sport car and the performance car are early/mid goals (1–2 hours); the supercar is a
-real achievement (5–6 hours); the hypercar is a long-term goal (11–12 hours: two to six weeks of
+real achievement (4–5 hours); the hypercar is a long-term goal (9–11 hours: two to six weeks of
 normal play) and the legendary car longer still. Skill shortens the ladder (experts reach the
-supercar ~30% sooner and the hypercar ~20% sooner than casual players) but no single run can
+supercar ~35% sooner and the hypercar ~35% sooner than casual players; pursuits, rivals and
+challenges are where much of that skill premium now comes from) but no single run can
 skip it (per-run caps, level gates, dual requirements).
 
 Limits of the model: bots are not people. They crash sooner in the fastest cars, so the bot

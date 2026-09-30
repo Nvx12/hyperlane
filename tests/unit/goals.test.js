@@ -85,7 +85,7 @@ test('achievements unlock once, pay their configured reward, and are listed with
   const r2 = E.settleRun(s, run({ topSpeed: 260 }), { dateKey: 'd', now: 43 });
   assert.ok(!r2.credits.some(([l]) => l === 'Achievements'));
   const list = E.achievementList(s);
-  assert.equal(list.length, 20);
+  assert.equal(list.length, 23);
   assert.ok(list.find(a => a.id === 'first_ride').unlocked);
   assert.ok(list.every(a => a.reward > 0));
 });

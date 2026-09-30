@@ -37,10 +37,10 @@ export const tierOf = id => TIERS[carRules(id).tier];
 
 // ---------------------------------------------------------------- empty documents
 
-export const emptyRecords = () => ({ score: 0, distance: 0, topSpeed: 0, combo: 1, nearMisses: 0, overtakes: 0, chase: 0, cleanDistance: 0 });
+export const emptyRecords = () => ({ score: 0, distance: 0, topSpeed: 0, combo: 1, nearMisses: 0, overtakes: 0, chase: 0, cleanDistance: 0, heat: 0 });
 export const emptyStats = () => ({
   races: 0, distance: 0, playTime: 0, overtakes: 0, nearMisses: 0, insaneMisses: 0, perfectOvertakes: 0,
-  crashes: 0, boostTime: 0, policeEscapes: 0, pickups: 0, chicanes: 0, legendPasses: 0,
+  crashes: 0, boostTime: 0, policeEscapes: 0, pickups: 0, chicanes: 0, legendPasses: 0, rivalsBeaten: 0,
   missionsCompleted: 0, dailiesCompleted: 0, creditsEarned: 0, carDistance: {},
 });
 export const newCarState = id => ({ upgrades: Object.fromEntries(UPGRADE_KEYS.map(k => [k, 0])), custom: defaultCustom(getCar(id)) });
@@ -407,6 +407,7 @@ export function achievementContext(state, run) {
       perfectOvertakes: add('perfectOvertakes'),
       chicanes: add('chicanes'),
       legendPasses: add('legendPasses'),
+      rivalsBeaten: add('rivalsBeaten'),
       creditsEarned: st.creditsEarned,
       dailiesCompleted: st.dailiesCompleted,
     },
@@ -415,6 +416,7 @@ export function achievementContext(state, run) {
       distance: Math.max(r.distance, x ? x.distance : 0),
       cleanDistance: Math.max(r.cleanDistance, x ? x.bestCleanDistance : 0),
       combo: Math.max(r.combo, x ? x.bestMultiplier : 1),
+      heat: Math.max(r.heat || 0, x ? x.heatEscaped || 0 : 0),
     },
     maxedUpgrades: maxed,
     standardCars: CARS.filter(c => !carRules(c.id).legendary && state.ownedCars.includes(c.id)).length,
@@ -450,13 +452,15 @@ export function runRewards(run, level) {
     ['Near misses', run.nearMisses * c.NEAR_MISS + run.insaneMisses * c.INSANE_BONUS],
     [`Best combo x${run.bestMultiplier}`, c.COMBO_TIER[tier] || 0],
     ['Chicanes', run.chicanes * c.CHICANE],
-    ['Police escapes', run.policeEscapes * c.POLICE_ESCAPE],
+    ['Police escapes', run.policeEscapes * c.POLICE_ESCAPE + (run.escapeStars || 0) * c.ESCAPE_STAR],
+    ['Rivals & challenges', (run.rivalsBeaten || 0) * c.RIVAL + (run.challenges || 0) * c.CHALLENGE],
     ['Bonuses', run.legendPasses * c.LEGEND_PASS + (run.creditChips || 0) * c.CREDIT_CHIP],
   ];
   const rawCredits = lines.reduce((sum, [, v]) => sum + v, 0);
   const x = RUN_XP;
   const rawXp = x.RACE + km * x.PER_KM + (run.score / 1000) * x.PER_1000_SCORE + run.nearMisses * x.NEAR_MISS
-    + run.perfectOvertakes * x.PERFECT_OVERTAKE + run.chicanes * x.CHICANE + run.policeEscapes * x.POLICE_ESCAPE + (x.COMBO_TIER[tier] || 0);
+    + run.perfectOvertakes * x.PERFECT_OVERTAKE + run.chicanes * x.CHICANE + run.policeEscapes * x.POLICE_ESCAPE
+    + (run.escapeStars || 0) * x.ESCAPE_STAR + (run.rivalsBeaten || 0) * x.RIVAL + (run.challenges || 0) * x.CHALLENGE + (x.COMBO_TIER[tier] || 0);
   const cap = (raw, soft) => (raw <= soft ? raw : Math.min(soft * RUN_CAPS.HARD, soft + (raw - soft) * RUN_CAPS.OVER_RATE));
   const credits = cap(rawCredits, RUN_CAPS.CREDITS_SOFT(level));
   const xp = cap(rawXp, RUN_CAPS.XP_SOFT(level));
@@ -486,6 +490,7 @@ export function updateRecords(state, run) {
   check('overtakes', run.overtakes);
   check('chase', run.longestChase || 0);
   check('cleanDistance', run.bestCleanDistance);
+  check('heat', run.heatEscaped || 0);
   return beaten;
 }
 
@@ -494,7 +499,7 @@ function addLifetimeStats(state, run) {
   st.races++;
   st.distance += run.distance;
   st.playTime += run.durationMs / 1000;
-  for (const k of ['overtakes', 'nearMisses', 'insaneMisses', 'perfectOvertakes', 'crashes', 'boostTime', 'policeEscapes', 'pickups', 'chicanes', 'legendPasses']) {
+  for (const k of ['overtakes', 'nearMisses', 'insaneMisses', 'perfectOvertakes', 'crashes', 'boostTime', 'policeEscapes', 'pickups', 'chicanes', 'legendPasses', 'rivalsBeaten']) {
     st[k] += run[k] || 0;
   }
   st.carDistance[run.carId] = (st.carDistance[run.carId] || 0) + run.distance;

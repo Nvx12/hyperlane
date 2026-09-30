@@ -82,7 +82,20 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
         </button>
       </div>
-      <div class="mission-chip" id="mission-chip" hidden><span id="mission-chip-text"></span><i id="mission-chip-bar"></i></div>
+      <!-- Right column under speed: heat (and the chase meters), then the mission chip -->
+      <div class="hud-right-stack">
+        <div class="heat" id="heat" hidden>
+          <span class="heat-stars" id="heat-stars">☆☆☆☆☆</span>
+          <div class="heat-next"><i id="heat-fill"></i></div>
+          <div class="chase-meters" id="chase-meters" hidden>
+            <span class="chase-label">ESCAPE</span><div class="meter escape"><i id="escape-fill"></i></div>
+            <span class="chase-label bust">BUSTED</span><div class="meter bust"><i id="bust-fill"></i></div>
+          </div>
+        </div>
+        <div class="mission-chip" id="mission-chip" hidden><span id="mission-chip-text"></span><i id="mission-chip-bar"></i></div>
+      </div>
+      <!-- Police behind you: which side and how far (above the bottom meters, never on the road ahead) -->
+      <div class="police-radar" id="police-radar" hidden><span class="radar-arrow" id="radar-arrow">▲</span><b>POLICE</b> <span id="radar-dist">40m</span></div>
 
       <div class="event-banner" id="event-banner">
         <span class="event-kicker" id="event-kicker"></span>
@@ -100,6 +113,7 @@
       </div>
     </div>
 
+    <div id="danger-edge" class="danger-edge" aria-hidden="true"></div>
     <div id="hit-left" class="hit-edge left" aria-hidden="true"></div>
     <div id="hit-right" class="hit-edge right" aria-hidden="true"></div>
     <div id="callout" class="callout" aria-live="polite"></div>
@@ -360,6 +374,9 @@
             <div><b id="res-combo">x1</b><span>best combo</span></div>
             <div><b id="res-speed">0</b><span>km/h max</span></div>
           </div>
+          <!-- Pursuit summary (only when the police got involved) and one "try this next" hint -->
+          <p class="res-chase" id="res-chase" hidden></p>
+          <p class="res-hint" id="res-hint" hidden></p>
           <div class="online-line" id="res-online" role="status" hidden></div>
           <!-- One concrete reason to race again: the next car (with progress) or mission -->
           <div class="next-goal" id="res-goal" hidden></div>

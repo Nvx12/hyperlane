@@ -1,5 +1,6 @@
 import { CAMERA, COLLISION } from './config.js';
-import { SCORE, NEAR_MISS, COMBO, BOOST, SLIPSTREAM, RARE_TRAFFIC } from './balance.js';
+import { SCORE, NEAR_MISS, COMBO, BOOST, SLIPSTREAM, RARE_TRAFFIC, SKILL, COMBO_MILESTONES } from './balance.js';
+import { BARRIER_SPIKES, BARRIER_ROADWORK } from './TrafficManager.js';
 import { approach, sign } from './utils.js';
 import { PRIORITY } from './BonusFeed.js';
 
@@ -18,6 +19,17 @@ export class SkillSystem {
     this.streakTimer = 0;
     this.holdTimer = 0; // continuous seconds at or above HOLD_KMH
     this.recordAnnounced = false;
+    this.slipCharged = false; // slipstream charged: pulling out now = slingshot
+    this.closeCallAt = -999;
+  }
+
+  // Boost earned by risk grows with the combo (x3+) and in FLOW.
+  boostGain(amount) {
+    const g = this.game;
+    let k = 1;
+    if (g.score.multiplier >= COMBO_MILESTONES.BOOST_GAIN_FROM) k = COMBO_MILESTONES.BOOST_GAIN;
+    if (g.flow) k = COMBO_MILESTONES.FLOW_BOOST_GAIN;
+    g.player.addBoost(amount * k);
   }
 
   // Single pass over traffic: collision, closest-approach tracking, lineup, slipstream.
@@ -43,8 +55,16 @@ export class SkillSystem {
         const limZ = halfLen * COLLISION.Z_FACTOR;
         const limX = halfW * COLLISION.X_FACTOR;
         if (dz < limZ && dz > -limZ && adx < limX) {
+          if (car.barrier === BARRIER_SPIKES) {
+            if (!car.hit) {
+              car.hit = true;
+              g.police.onSpikes();
+            }
+            continue;
+          }
           collided = true;
-          g.resolveCrash(car, dx, dz, limX, limZ);
+          if (car.barrier === BARRIER_ROADWORK) g.hitCones(car, dx);
+          else g.resolveCrash(car, dx, dz, limX, limZ);
           continue;
         }
       }
@@ -64,6 +84,19 @@ export class SkillSystem {
       }
     }
     p.slipstream = approach(p.slipstream, slip ? 1 : 0, (slip ? SLIPSTREAM.BUILD : SLIPSTREAM.DECAY) * dt);
+    // Draft → slingshot: pull out of a charged slipstream for a burst of speed.
+    if (p.slipstream >= SKILL.SLINGSHOT_CHARGE) this.slipCharged = true;
+    if (this.slipCharged && !slip) {
+      this.slipCharged = false;
+      if (Math.abs(p.vx) > 2 && kmh > 140 && g.isPlaying()) {
+        p.slingshot(SKILL.SLINGSHOT_KMH, SKILL.SLINGSHOT_TIME);
+        g.score.stats.slingshots++;
+        this.award('SLINGSHOT', SKILL.SLINGSHOT_POINTS, 1, 'cyan');
+        g.audio.boost();
+        g.camera.kick(0.03);
+        g.police.addHeat(4, true);
+      }
+    }
   }
 
   // Scores an action and lists it in the bonus feed (repeats merge: "NEAR MISS ×3 +750").
@@ -71,6 +104,7 @@ export class SkillSystem {
     const g = this.game;
     const points = g.score.award(base, comboGain);
     g.ui.feed.push(label, points, PRIORITY.ROUTINE, variant);
+    g.director.moment();
     return points;
   }
 
@@ -98,8 +132,23 @@ export class SkillSystem {
     if (grade) {
       stats.nearMisses++;
       if (grade.grade === 2) stats.insaneMisses++;
-      p.addBoost(grade.boost);
-      this.award(grade.label, grade.points, grade.combo, NEAR_MISS_VARIANTS[grade.grade]);
+      this.boostGain(grade.boost);
+      const truck = car.typeKey === 'truck';
+      const label = car.police ? 'POLICE NEAR MISS' : truck ? 'TRUCK SQUEEZE' : grade.label;
+      this.award(label, grade.points * (truck || car.police ? SKILL.TRUCK_NEAR_MISS_MULT : 1), grade.combo, NEAR_MISS_VARIANTS[grade.grade]);
+      g.police.onNearMiss(grade.grade, car);
+      g.events.onNearMiss();
+      // Dead ahead a moment ago, and you slipped past it: a perfect dodge (strict on purpose).
+      if (car.lineupAt >= 0 && g.time - car.lineupAt < SKILL.PERFECT_DODGE_WINDOW && grade.grade >= 1) {
+        stats.perfectDodges++;
+        this.boostGain(SKILL.PERFECT_DODGE_BOOST);
+        this.award('PERFECT DODGE', SKILL.PERFECT_DODGE_POINTS, 3, 'gold');
+      }
+      // A rare cinematic beat for the most extreme escapes.
+      if (grade.grade === 2 && kmhNow(g) >= SKILL.CLOSE_CALL_MIN_KMH && g.time - this.closeCallAt > SKILL.CLOSE_CALL_COOLDOWN) {
+        this.closeCallAt = g.time;
+        g.closeCall();
+      }
       g.effects.nearMissBurst(g.playerScreen, side, grade.grade);
       g.camera.addTrauma(0.08 + 0.08 * grade.grade);
       if (grade.grade >= 1) g.camera.kick(0.015 + 0.02 * grade.grade);
@@ -109,10 +158,13 @@ export class SkillSystem {
     }
 
     stats.overtakes++;
+    g.events.onOvertake();
+    g.police.onPass(car);
     let comboGain = highSpeed ? COMBO.GAIN.overtake : 0;
     if (p.boosting) comboGain += COMBO.GAIN.boostOvertake;
     if (car.lineupAt >= 0 && g.time - car.lineupAt < SCORE.PERFECT_WINDOW && ratio >= SCORE.PERFECT_MIN_RATIO) {
       stats.perfectOvertakes++;
+      g.police.onPerfect();
       this.award('PERFECT OVERTAKE', SCORE.PERFECT_OVERTAKE, COMBO.GAIN.perfect + (p.boosting ? COMBO.GAIN.boostOvertake : 0), 'gold');
       g.audio.perfect();
     } else {
@@ -121,7 +173,7 @@ export class SkillSystem {
       g.score.award(SCORE.OVERTAKE, comboGain, p.boosting);
       if (!grade) g.audio.overtake();
     }
-    if (highSpeed) p.addBoost(BOOST.OVERTAKE);
+    if (highSpeed) this.boostGain(BOOST.OVERTAKE);
 
     if (car.rare) {
       stats.legendPasses++;
@@ -130,6 +182,7 @@ export class SkillSystem {
     }
     if (car.patternSlot >= 0 && traffic.resolvePattern(car, false)) {
       stats.chicanes++;
+      g.police.onChicane();
       this.award('CHICANE', SCORE.CHICANE, COMBO.GAIN.chicane, 'violet');
     }
   }
@@ -197,3 +250,5 @@ export class SkillSystem {
     }
   }
 }
+
+const kmhNow = g => g.player.speed * 3.6;

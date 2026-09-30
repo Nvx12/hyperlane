@@ -100,7 +100,10 @@ export const RUN_CREDITS = {
   INSANE_BONUS: 10,
   PERFECT_OVERTAKE: 6,
   CHICANE: 10,
-  POLICE_ESCAPE: 100,
+  POLICE_ESCAPE: 40, // plus ESCAPE_STAR per heat star escaped: ★2 = 120, ★5 = 240
+  ESCAPE_STAR: 40,
+  RIVAL: 120,
+  CHALLENGE: 40,
   LEGEND_PASS: 100,
   CREDIT_CHIP: 50,
   COMBO_TIER: [0, 15, 35, 70, 120, 200], // by best combo tier reached (x1 … x10)
@@ -114,7 +117,10 @@ export const RUN_XP = {
   NEAR_MISS: 8,
   PERFECT_OVERTAKE: 6,
   CHICANE: 8,
-  POLICE_ESCAPE: 40,
+  POLICE_ESCAPE: 15,
+  ESCAPE_STAR: 12,
+  RIVAL: 40,
+  CHALLENGE: 15,
   COMBO_TIER: [0, 5, 15, 30, 60, 100], // by best combo tier reached (x1 … x10)
 };
 
@@ -146,6 +152,7 @@ export const ACHIEVEMENT_REWARDS = {
   marathon: 600, untouchable: 800, boost_addict: 300, clean_getaway: 250, escape_artist: 800,
   combo_king: 700, perfectionist: 400, chicane_master: 400, gearhead: 300, collector: 3000,
   high_roller: 500, globetrotter: 1000, legend_spotter: 300, ghost: 2000,
+  hot_pursuit: 400, most_wanted: 1200, rival_slayer: 600,
 };
 
 // ---------------------------------------------------------------- guest → online import

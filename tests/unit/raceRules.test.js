@@ -51,8 +51,14 @@ test('each plausibility check rejects its target', () => {
   assert.equal(check({ legendPasses: 30 }), 'legend_passes');
   assert.equal(check({ pickups: 200 }), 'pickups');
   assert.equal(check({ creditChips: 4 }), 'credit_chips');
-  assert.equal(check({ policeEscapes: 9 }), 'police');
-  assert.equal(check({ longestChase: 90 }), 'chase');
+  assert.equal(check({ policeEscapes: 10 }), 'police');
+  assert.equal(check({ maxHeat: 6 }), 'heat');
+  assert.equal(check({ policeEscapes: 1, maxHeat: 3, heatEscaped: 4 }), 'heat');
+  assert.equal(check({ policeEscapes: 1, maxHeat: 5, escapeStars: 6 }), 'escape_stars');
+  assert.equal(check({ maxHeat: 3, heatEscaped: 3 }), 'escape_stars');
+  assert.equal(check({ rivalsBeaten: 5 }), 'rivals');
+  assert.equal(check({ challenges: 8 }), 'challenges');
+  assert.equal(check({ longestChase: 200 }), 'chase');
   assert.equal(check({ boostTime: 500 }), 'timers');
   assert.equal(check({ bestCleanDistance: 9000 }), 'clean_distance');
   assert.equal(check({ score: 1e9 }), 'score');

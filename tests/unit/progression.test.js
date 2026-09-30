@@ -153,6 +153,30 @@ test('settling a run updates records, stats, missions, achievements, credits and
   assert.equal(s.stats.carDistance.vireo, 7000);
 });
 
+test('pursuits pay by heat: higher-star escapes, rivals and challenges earn more; records and achievements follow', () => {
+  const sum = r => r.credits.reduce((a, [, v]) => a + v, 0);
+  const none = E.runRewards(run(), 5);
+  const low = E.runRewards(run({ policeEscapes: 1, escapeStars: 2, heatEscaped: 2 }), 5);
+  const high = E.runRewards(run({ policeEscapes: 1, escapeStars: 5, heatEscaped: 5 }), 5);
+  const duel = E.runRewards(run({ rivalsBeaten: 1, challenges: 2 }), 5);
+  assert.ok(sum(high) > sum(low) && sum(low) > sum(none));
+  assert.ok(high.xp > low.xp && low.xp > none.xp);
+  assert.ok(sum(duel) > sum(none) && duel.xp > none.xp);
+  const s = fresh();
+  E.settleRun(s, run({ policeEscapes: 1, escapeStars: 3, heatEscaped: 3, maxHeat: 3 }), { dateKey: 'd', now: 1 });
+  assert.equal(s.records.heat, 3);
+  assert.ok(s.achievements.hot_pursuit);
+  assert.ok(!s.achievements.most_wanted);
+  const again = E.settleRun(s, run({ policeEscapes: 1, escapeStars: 5, heatEscaped: 5, maxHeat: 5, rivalsBeaten: 1 }), { dateKey: 'd', now: 2 });
+  assert.ok(again.beaten.includes('heat'));
+  assert.ok(s.achievements.most_wanted);
+  assert.equal(s.stats.rivalsBeaten, 1);
+  // Old saves without the new fields normalise to zero, not NaN.
+  const old = E.normalizeProgress({ records: { score: 5 }, stats: { races: 1 } });
+  assert.equal(old.records.heat, 0);
+  assert.equal(old.stats.rivalsBeaten, 0);
+});
+
 test('"new car available" is announced once, when the requirements are first met', () => {
   const s = fresh();
   s.xp = E.totalXpForLevel(3) - 1;

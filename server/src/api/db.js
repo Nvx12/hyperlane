@@ -242,6 +242,14 @@ export const MIGRATIONS = [
       CREATE INDEX sync_ops_time ON sync_ops(created_at);
     `,
   },
+  {
+    version: 4,
+    name: 'pursuit records: highest heat escaped, rivals beaten',
+    sql: `
+      ALTER TABLE player_stats ADD COLUMN rivals_beaten INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE player_stats ADD COLUMN best_heat INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 export function openDatabase(path) {

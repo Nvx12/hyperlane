@@ -73,6 +73,19 @@ export class PickupManager {
     return false;
   }
 
+  // A reward placed on purpose (a formation's risk gap): boost, or repair when damaged.
+  spawnAt(lane, z, damaged) {
+    const slot = this.pool.find(p => !p.active);
+    if (!slot) return false;
+    slot.active = true;
+    slot.type = damaged && Math.random() < 0.5 ? PICKUP_REPAIR : Math.random() < 0.15 ? PICKUP_CREDITS : PICKUP_BOOST;
+    slot.x = laneCenter(lane);
+    slot.z = z;
+    slot.sortZ = z;
+    slot.bob = Math.random() * 10;
+    return true;
+  }
+
   collect(player, onCollect) {
     for (let i = 0; i < this.pool.length; i++) {
       const p = this.pool[i];

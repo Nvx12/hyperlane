@@ -289,7 +289,7 @@ test('garage, missions, achievements and catalog endpoints', async () => {
   assert.equal(missions.json.missions.length, 3);
   assert.equal(missions.json.daily.goals.length, 3);
   const ach = await srv.call('GET', '/api/v1/achievements', { token });
-  assert.equal(ach.json.achievements.length, 20);
+  assert.equal(ach.json.achievements.length, 23);
   assert.equal((await srv.call('GET', '/api/v1/garage')).status, 401);
 });
 

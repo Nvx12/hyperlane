@@ -239,6 +239,58 @@ export class AudioManager {
     }
   }
 
+  // Siren loudness follows the nearest pursuing unit (0 = silent): heard before it is seen.
+  // Only changes the gain when the level moves noticeably (called every frame).
+  sirenLevel(level) {
+    if (!this.ctx) return;
+    if (level <= 0) {
+      if (this.sirenNodes) this.siren(false);
+      this.sirenShown = 0;
+      return;
+    }
+    if (!this.sirenNodes) this.siren(true);
+    if (Math.abs(level - (this.sirenShown || 0)) < 0.05) return;
+    this.sirenShown = level;
+    this.sirenNodes.gain.gain.setTargetAtTime(0.012 + 0.045 * level, this.ctx.currentTime, 0.25);
+  }
+
+  // Heat star gained: a rising two-note stinger, higher with every star.
+  heatUp(level) {
+    const base = 330 + level * 70;
+    this.tone(base, 0.12, 'triangle', 0.08);
+    this.tone(base * 1.5, 0.16, 'triangle', 0.08, 0.1);
+  }
+
+  // Police dispatched: a radio-style double chirp.
+  policeAlert() {
+    this.tone(1200, 0.06, 'square', 0.05);
+    this.tone(1500, 0.06, 'square', 0.05, 0.09);
+    this.noise(0.25, 'bandpass', 1800, 900, 0.04, 0.2, 2);
+  }
+
+  // Ram warning / impact whoosh from the side.
+  policeRam() {
+    this.noise(0.3, 'lowpass', 900, 250, 0.12, 0, 1);
+  }
+
+  // Rival arrives: an engine flyby (rising filtered noise) and a horn blip.
+  rivalAlert() {
+    this.noise(0.9, 'bandpass', 300, 1400, 0.08, 0, 1.5);
+    this.tone(440, 0.12, 'sawtooth', 0.05, 0.6);
+    this.tone(554, 0.16, 'sawtooth', 0.05, 0.72);
+  }
+
+  // FLOW on: a bright shimmer; off: a short falling tone.
+  flow(on) {
+    if (on) {
+      this.tone(880, 0.25, 'sine', 0.07);
+      this.tone(1320, 0.3, 'sine', 0.06, 0.08);
+      this.tone(1760, 0.35, 'sine', 0.05, 0.16);
+    } else {
+      this.tone(660, 0.2, 'sine', 0.05, 0, 330);
+    }
+  }
+
   // ---------------------------------------------------------------- one-shots
 
   tone(freq, duration, type = 'sine', volume = 0.15, delay = 0, slideTo = 0) {

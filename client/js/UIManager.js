@@ -100,6 +100,11 @@ export class UIManager {
     if (visible) this.resetCache();
     this.feed.clear();
     this.setMissionChip(null);
+    this.policeCache = null;
+    this.$('heat').hidden = true;
+    this.$('police-radar').hidden = true;
+    this.$('danger-edge').classList.remove('on');
+    this.setFlow(false);
     if (!visible) this.hideBanner();
   }
 
@@ -294,6 +299,74 @@ export class UIManager {
     setTimeout(() => node.remove(), TOAST_TIME + 400);
   }
 
+  // Heat stars, chase meters, rear radar and danger edges. Writes only what changed.
+  updatePolice(level, heat, chase, radar, alert) {
+    const $ = this.$;
+    const c = this.policeCache || (this.policeCache = { level: -1, next: -1, chase: null, escape: -1, bust: -1, radar: '', alert: false, shown: null });
+    const shown = heat > 3 || chase !== null;
+    if (shown !== c.shown) {
+      c.shown = shown;
+      $('heat').hidden = !shown;
+    }
+    if (!shown) {
+      if (c.radar) {
+        c.radar = '';
+        $('police-radar').hidden = true;
+      }
+      return;
+    }
+    if (level !== c.level) {
+      c.level = level;
+      $('heat-stars').textContent = '★'.repeat(level) + '☆'.repeat(5 - level);
+      $('heat').dataset.level = level;
+      this.restartAnimation($('heat'), 'bump');
+    }
+    const next = level >= 5 ? 1 : Math.round(((heat % 100) / 100) * 40) / 40;
+    if (next !== c.next) {
+      c.next = next;
+      $('heat-fill').style.transform = `scaleX(${next})`;
+    }
+    const inChase = chase !== null;
+    if (inChase !== c.chase) {
+      c.chase = inChase;
+      $('chase-meters').hidden = !inChase;
+      $('heat').classList.toggle('chasing', inChase);
+    }
+    if (inChase) {
+      const e = Math.round(chase.escape * 50) / 50;
+      if (e !== c.escape) {
+        c.escape = e;
+        $('escape-fill').style.transform = `scaleX(${e})`;
+      }
+      const b = Math.round(chase.bust * 50) / 50;
+      if (b !== c.bust) {
+        c.bust = b;
+        $('bust-fill').style.transform = `scaleX(${b})`;
+        $('chase-meters').classList.toggle('danger', b > 0.02);
+      }
+    }
+    const r = radar ? `${radar.side < 0 ? 'L' : radar.side > 0 ? 'R' : 'C'}${Math.round(-radar.dz / 5) * 5}` : '';
+    if (r !== c.radar) {
+      c.radar = r;
+      const el = $('police-radar');
+      el.hidden = !radar;
+      if (radar) {
+        $('radar-dist').textContent = `${Math.round(-radar.dz / 5) * 5}m`;
+        el.dataset.side = radar.side < 0 ? 'left' : radar.side > 0 ? 'right' : 'center';
+        el.classList.toggle('close', -radar.dz < 15);
+      }
+    }
+    const a = alert > 0.1;
+    if (a !== c.alert) {
+      c.alert = a;
+      $('danger-edge').classList.toggle('on', a);
+    }
+  }
+
+  setFlow(on) {
+    document.body.classList.toggle('flow', on);
+  }
+
   // Mission list on the pause screen. Rebuilt only when progress text changes.
   setMissionTracker(items) {
     const html = items.map(m => `<div class="track ${m.done ? 'done' : ''}"><span>${escapeHtml(m.text)}</span><b>${escapeHtml(m.progress)}</b></div>`).join('');
@@ -380,6 +453,12 @@ export class UIManager {
     $('res-distance').textContent = (r.distance / 1000).toFixed(2);
     $('res-combo').textContent = `x${r.bestCombo}`;
     $('res-speed').textContent = this.format(r.topSpeed);
+    const chase = $('res-chase');
+    chase.hidden = !r.chase;
+    chase.textContent = r.chase || '';
+    const hint = $('res-hint');
+    hint.hidden = !r.hint;
+    hint.textContent = r.hint || '';
     $('res-credits').textContent = `+${this.format(r.creditsTotal)}`;
     $('res-xp').textContent = `+${this.format(r.xp)}`;
     $('res-level').textContent = r.level.level;

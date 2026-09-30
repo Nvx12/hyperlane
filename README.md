@@ -2,7 +2,7 @@
 
 *Thread the traffic. Own the night.*
 
-A mobile arcade racer, played in landscape with both thumbs. Weave through traffic across five routes, chain risky moves into a combo multiplier, outrun the police, climb the global leaderboards and race your own best-run ghost. Runs last 2–7 minutes, and one tap starts the next. It installs to the home screen (PWA) and plays offline.
+A mobile arcade racer, played in landscape with both thumbs. Weave through traffic across five routes, chain risky moves into a combo multiplier, outrun the police, climb the global leaderboards and race your own best-run ghost. Runs last 1–5 minutes, and one tap starts the next. It installs to the home screen (PWA) and plays offline.
 
 - **Built for phones:** touch-first controls (optional tilt steering), safe-area aware layout from 16:9 to 20:9, 30/60 FPS pacing, adaptive quality, haptics, and pausing on every interruption. Game controllers work too; the keyboard is kept only for development.
 
@@ -77,8 +77,20 @@ The loop: **drive fast → take risks → near miss / late dodge → combo → b
 - **Near misses** are graded by how close you pass: CLOSE +100, VERY CLOSE +250, INSANE +500. Each one also refills boost.
 - **Perfect overtake** (+300): a car was directly in your path within 35 m, and you passed it within 1.2 s at speed.
 - **Slipstream:** tuck in behind a car to charge boost and gain speed.
-- **Police pursuits:** survive 30 s to escape (+2,500).
+- **Perfect dodge** (+400, boost): swerve out of a car's path at the last moment. **Slingshot** (+250): pull out of a charged slipstream for a short surge above top speed.
+- **FLOW** at x10: score ×1.25 and faster boost gain until the combo drops below x8.
+- **Heat and the police** (below): heat is risk you can cash in — every heat star adds +10 % to all points.
 - **Difficulty** follows racing time: a 30 s warm-up, then moderate → challenging → intense → expert by 6 minutes.
+
+## Heat, police and the run director
+
+- **Heat (0–5★)** builds from how you drive: running near top speed, boosting, a high combo, near misses (police near misses and blasting past a patrol most of all). It cools off quickly when you drive calmly. The HUD shows the stars and progress to the next one.
+- **★1** is a warning. **From ★2** police units are dispatched from behind, in an adjacent lane, never on top of you, and they physically chase you: they close in, shadow you, and (★3+) overtake and try to block your lane with a telegraphed brake-check. **★4+** adds rams (warned first) and roadblocks; **★5** adds spike strips. Roadblocks are announced at 250 m and 150 m with a lane diagram and always leave at least one lane open.
+- **Escape** by pulling away and passing units: the escape meter fills when no unit is close, faster the further ahead you are. You're **busted** if units stay on you while you're slow or you keep hitting them (−25 health, the run goes on). An escape pays score by stars (400 … 4,500) plus credits and XP per star, and earns a breather.
+- **Run director:** each run is a sequence of phases (warm-up → pressure → event → escalation → peak → breather, repeating from a higher floor). An intensity value (0–100) drives traffic density, lane changes and designed formations (gates, staggers, truck walls, packs, moving gaps, risky pickups). A chase is always a peak; an escape is followed by a breather.
+- **Events** (announced, never overlapping): heavy traffic, truck convoy, open highway, tunnel, roadwork, accident, rainstorm, police patrol, speed zone, overtake rush, near-miss blitz and a rival racer duel. Each run has a hidden seeded personality (mixed, traffic, police, speed, storm) that tilts which events appear, so runs don't play alike. If nothing happens for ~16 s the director makes something happen.
+- **Crashes are graded:** a scrape costs a little speed and one combo tier; a side hit two tiers; a head-on hit ends the combo. Cones slow you and dent the car but don't end the run.
+- **Dev panel** (`?debug`, never in production builds): trigger any heat level, a chase, roadblock, patrol, escape, every event and formation, and watch the director's phase, intensity, heat and telemetry.
 
 ## Progression and features
 
@@ -86,7 +98,7 @@ The loop: **drive fast → take risks → near miss / late dodge → combo → b
 - **Progression** ([docs/progression.md](docs/progression.md)): one rules engine for XP, levels, credits, car unlocks and purchases, upgrades, cosmetics, missions, the daily challenge and achievements, shared by the game and the server. All numbers live in `client/js/progression/config.js`, tuned with a simulation on recorded runs (`tools/balance`).
 - **7 cars in 5 tiers** (Street → Sport → Performance → Supercar → Hypercar, plus a secret legendary car). Powerful cars need a driver level *and* a skill goal, then a credit price. Locked cars stay visible with their requirements and progress. Tier ceilings on upgrades keep each car's identity.
 - **One currency** (credits) for cars, upgrades and cosmetics. Skill pays more than mileage; per-run caps stop one freak run from skipping the ladder.
-- **After a race:** score, distance, best combo, top speed, credits and XP, the level bar, *New unlock available* (with *View unlock*) and one concrete next goal.
+- **After a race:** score, distance, best combo, top speed, a pursuit line (escapes, best heat escaped, longest chase, max heat), credits and XP, the level bar, *New unlock available* (with *View unlock*), one "try this next" hint and one concrete next goal.
 - **World:** five routes plus a world tour, time of day, weather (rain, fog, storm), announced road events and rare surprises.
 - **Online (optional):** cloud progress, validated runs, leaderboards (score / distance / top speed / combo × today / week / all time), and a one-time transfer code to continue on another phone.
 - **Social:** Share & challenge from the results screen creates a link that shows your score as a challenge to whoever opens it.
@@ -127,7 +139,11 @@ client/                 static PWA (served as-is in dev, copied to dist/ by the 
     Tutorial.js Haptics.js BackNav.js   first-race coach · vibration · Android Back handling
     Ghost.js Share.js     personal-best ghost · share text and challenge links
     net/                  ApiClient, PlayerService, RaceService, Analytics
-    … Player, TrafficManager, SkillSystem, ScoreSystem, EventDirector, Road, Environment,
+    RunDirector.js        pacing: phases, intensity, run personality, event and formation choice
+    EventDirector.js      runs road events and challenges
+    PoliceSystem.js       heat, pursuit AI, roadblocks, escape/bust, rewards
+    RivalRacer.js DevPanel.js   rival duel AI · dev-only event panel
+    … Player, TrafficManager, SkillSystem, ScoreSystem, Road, Environment,
       Weather, Camera, Effects, Sprites, AudioManager, Music, SaveManager, Progression, Goals,
       Menus, MenuScreens, UIManager, data/
 server/
@@ -334,7 +350,8 @@ Put a TLS-terminating reverse proxy in front (Caddy, nginx or a platform load ba
   | 6× slower | ~53 FPS (Low, reduced scale) | 30 (stable) | 30 | 30 | 5.7 ms |
 
 - **Stability:** 20 play → crash → restart cycles on a phone viewport kept the heap at 3.4–4.0 MB, with 79 listeners, about 880 DOM nodes, one AudioContext, one interval and a steady 60 rAF/s.
-- **Session length:** simulated players on the default car had a median run of 2.7–3.0 minutes.
+- **Worst case with the pursuit systems** (5★ chase with 3 units + storm + heavy traffic of ~23 cars + continuous boost + ~56 particles, 844×390 @3×): 60 FPS with CPU ×1 and ×4; update + render 0.6 ms (×1) and 6.7 ms (×4) per frame, vs 3.1 ms for a plain race at ×4.
+- **Session length:** bot players (`tools/balance/playtest.mjs`) on the default car had median runs of 95 s (casual), 89–95 s (skilled) and 110–145 s (expert).
 - **Payload:** what a phone downloads and caches to play is about 370 KB gzipped (brotli is smaller). The whole release is 549 KB; the rest is the social preview and install-sheet JPEGs, which are fetched only when needed. The Docker image is 59 MB.
 
 ## Known limitations
@@ -345,6 +362,7 @@ Put a TLS-terminating reverse proxy in front (Caddy, nginx or a platform load ba
 - Anti-cheat can't detect a modified client that plays in real time with believable numbers (see above).
 - Display-name screening is a short word list, not full moderation; the `flagged` column is the manual tool.
 - The server is single-instance: rate limits live in memory, and SQLite runs on one volume (see docs/backend.md for the PostgreSQL path). `node:sqlite` is still marked experimental in Node 24.
+- Pacing, heat and police were tuned on bot playtests, not people. The director's numbers (`DIRECTOR`, `HEAT`, `POLICE` in `balance.js`) need a real playtest pass.
 - Progression was balanced on bot runs, not people. Bots crash sooner in the fastest cars, so the simulated skill advantage late in the ladder is probably understated; re-check with real beta data.
 - Accounts have device tokens and one-time transfer codes only; email / Google / Apple sign-in is designed for (`auth_identities`) but not built. Losing the phone without a transfer code loses the account.
 - A guest's progress can't be verified, so going online imports it with limits (level 12, 20,000 credits, upgrade step 3).

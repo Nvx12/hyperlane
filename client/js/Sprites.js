@@ -588,6 +588,28 @@ function createGateSprite() {
   return c;
 }
 
+// Spike strip seen from behind: a dark band with rows of steel teeth and yellow/black ends.
+function createSpikeSprite() {
+  const c = createCanvas(200, 26);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#16161e';
+  ctx.fillRect(0, 12, 200, 12);
+  ctx.fillStyle = '#c9d2e6';
+  for (let x = 6; x < 194; x += 9) {
+    ctx.beginPath();
+    ctx.moveTo(x, 13);
+    ctx.lineTo(x + 4, 2);
+    ctx.lineTo(x + 8, 13);
+    ctx.fill();
+  }
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = i % 2 ? '#111' : '#ffc247';
+    ctx.fillRect(i * 6, 12, 6, 12);
+    ctx.fillRect(176 + i * 6, 12, 6, 12);
+  }
+  return c;
+}
+
 export function createVignette(w, h, rgb) {
   const cw = Math.max(2, Math.round(w / 3));
   const ch = Math.max(2, Math.round(h / 3));
@@ -615,7 +637,16 @@ export function createSpriteBank() {
   return {
     vehicles,
     player: null, // assigned by the game from the selected garage car
-    police: createVehicleSprite('coupe', policeDims, '#e9ecf5', false, 110, { accent: '#2a4bff' }),
+    police: {
+      normal: createVehicleSprite('coupe', policeDims, '#e9ecf5', false, 110, { accent: '#2a4bff' }),
+      brake: createVehicleSprite('coupe', policeDims, '#e9ecf5', true, 110, { accent: '#2a4bff' }),
+    },
+    // The rival: a magenta supercar, unmistakable in traffic.
+    rival: {
+      normal: createVehicleSprite('super', { width: 2.0, height: 1.15 }, '#ff2d95', false, 110, { accent: '#22e6ff' }),
+      brake: createVehicleSprite('super', { width: 2.0, height: 1.15 }, '#ff2d95', true, 110, { accent: '#22e6ff' }),
+    },
+    wreck: createVehicleSprite('sedan', VEHICLE_TYPES.sedan, '#3a3d4a', true, VEHICLE_TYPES.sedan.ppm),
     glow: {
       spark: createGlowSprite(32, '255, 190, 90'),
       boost: createGlowSprite(48, PALETTE.CYAN_RGB),
@@ -642,6 +673,7 @@ export function createSpriteBank() {
       cone: createConeSprite(),
       arrowSign: createArrowSignSprite(),
       gate: createGateSprite(),
+      spikes: createSpikeSprite(),
     },
     beam: createBeamSprite(),
     flame: createFlameSprite(),

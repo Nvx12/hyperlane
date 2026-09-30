@@ -32,12 +32,13 @@ const STAT_COLS = [
   ['races', 'races'], ['distance', 'distance_m'], ['playTime', 'play_time_s'], ['overtakes', 'overtakes'],
   ['nearMisses', 'near_misses'], ['insaneMisses', 'insane_misses'], ['perfectOvertakes', 'perfect_overtakes'],
   ['crashes', 'crashes'], ['boostTime', 'boost_time_s'], ['policeEscapes', 'police_escapes'], ['pickups', 'pickups'],
-  ['chicanes', 'chicanes'], ['legendPasses', 'legend_passes'], ['missionsCompleted', 'missions_completed'],
+  ['chicanes', 'chicanes'], ['legendPasses', 'legend_passes'], ['rivalsBeaten', 'rivals_beaten'], ['missionsCompleted', 'missions_completed'],
   ['dailiesCompleted', 'dailies_completed'], ['creditsEarned', 'credits_earned'],
 ];
 const RECORD_COLS = [
   ['score', 'best_score'], ['distance', 'best_distance_m'], ['topSpeed', 'best_top_speed'], ['combo', 'best_combo'],
   ['nearMisses', 'best_near_misses'], ['overtakes', 'best_overtakes'], ['chase', 'best_chase'], ['cleanDistance', 'best_clean_distance'],
+  ['heat', 'best_heat'],
 ];
 const json = v => JSON.stringify(v);
 const parse = (s, fallback) => {
@@ -216,7 +217,7 @@ export function createProgressStore(db, now) {
       bounds = carId || fastestOwned(state);
     }
     const reason = run.durationMs < LIMITS.MIN_DURATION_MS ? 'too_short' : implausible(run, bounds, elapsed);
-    const details = json(Object.fromEntries(['insaneMisses', 'chicanes', 'pickups', 'creditChips', 'crashes', 'policeEscapes', 'legendPasses', 'longestChase', 'boostTime', 'highSpeedTime', 'bestCleanDistance'].map(k => [k, run[k]])));
+    const details = json(Object.fromEntries(['insaneMisses', 'chicanes', 'pickups', 'creditChips', 'crashes', 'policeEscapes', 'legendPasses', 'longestChase', 'boostTime', 'highSpeedTime', 'bestCleanDistance', 'escapeStars', 'heatEscaped', 'maxHeat', 'rivalsBeaten', 'challenges'].map(k => [k, run[k]])));
     const envId = run.envId || (session && session.env_id) || 'neon';
     const record = (status, rejectReason, credits, xp) => q.raceResult.run(player.id, op.opId, session ? session.id : null, session ? 'online' : 'offline',
       carId || state.selectedCar, envId, run.score, run.distance, run.durationMs, run.topSpeed, run.bestCombo, run.nearMisses, run.overtakes,

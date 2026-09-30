@@ -206,32 +206,186 @@ export const WEATHER = {
   SUPERCELL_CHANCE: 0.04,
 };
 
-// Telegraphed road events. `warn` is seconds of warning before the event takes effect.
+// Telegraphed road events, chosen and timed by the RunDirector. `warn` is seconds of warning
+// before the event takes effect; `intensity` is how hard it hits (the director only picks events
+// that fit the moment); `kind` groups them for variety.
 export const EVENTS = {
-  FIRST_AT: 1400,
-  GAP: [1300, 2400], // meters between events
-  MIN_DIFFICULTY_ROADWORK: 0.1,
-  heavyTraffic: { weight: 1, warn: 3, duration: 22, density: 1.7, label: 'HEAVY TRAFFIC', sub: 'Traffic density rising' },
-  openHighway: { weight: 1, warn: 2.5, duration: 20, density: 0.3, scoreBonus: 1.5, label: 'OPEN HIGHWAY', sub: 'Clear road — floor it! Distance points x1.5' },
-  tunnel: { weight: 1.2, warn: 3, length: [500, 850], ahead: 330, label: 'TUNNEL AHEAD', sub: 'Lights out' },
-  roadwork: { weight: 1, warn: 3.5, length: [150, 230], points: 200, label: 'ROADWORK AHEAD', sub: '' },
-  checkpoint: { weight: 0.8, warn: 4, points: 400, label: 'POLICE CHECKPOINT', sub: '' },
-  rainstorm: { weight: 0.8, warn: 3, duration: 30, label: 'RAINSTORM', sub: 'Wet road — less grip' },
+  heavyTraffic: { weight: 1, warn: 3, duration: 20, density: 1.7, intensity: 70, kind: 'traffic', label: 'HEAVY TRAFFIC', sub: 'Traffic closing in' },
+  truckConvoy: { weight: 1, warn: 3, intensity: 65, kind: 'traffic', label: 'TRUCK CONVOY', sub: 'Thread the gaps — squeezes pay double' },
+  openHighway: { weight: 1, warn: 2.5, duration: 18, density: 0.3, scoreBonus: 1.5, intensity: 25, kind: 'relief', label: 'OPEN HIGHWAY', sub: 'Clear road — floor it! Distance points x1.5' },
+  tunnel: { weight: 1.2, warn: 3, length: [500, 850], ahead: 330, intensity: 45, kind: 'world', label: 'TUNNEL AHEAD', sub: 'Lights out' },
+  roadwork: { weight: 1, warn: 3.5, length: [150, 230], points: 200, intensity: 55, kind: 'obstacle', label: 'ROADWORK AHEAD', sub: '' },
+  accident: { weight: 0.8, warn: 3.5, length: [60, 90], points: 300, intensity: 60, kind: 'obstacle', label: 'ACCIDENT AHEAD', sub: '' },
+  rainstorm: { weight: 0.8, warn: 3, duration: 30, intensity: 60, kind: 'world', label: 'RAINSTORM', sub: 'Wet road — less grip' },
+  policePatrol: { weight: 1, warn: 3, intensity: 55, kind: 'police', label: 'POLICE PATROL', sub: 'Ease off… or blast past for +500' },
+  speedZone: { weight: 1, warn: 2, window: 20, hold: 7, speedRatio: 0.9, points: 1200, boost: 30, intensity: 50, kind: 'challenge', label: 'SPEED ZONE', sub: '' },
+  overtakeRush: { weight: 1, warn: 2, window: 20, count: 10, points: 1200, boost: 30, intensity: 55, kind: 'challenge', label: 'OVERTAKE RUSH', sub: '' },
+  nearMissBlitz: { weight: 0.8, warn: 2, window: 25, count: 4, points: 1500, boost: 40, intensity: 60, kind: 'challenge', label: 'NEAR-MISS BLITZ', sub: '' },
+  rival: { weight: 0.7, warn: 3, intensity: 70, kind: 'rival', label: 'RIVAL CHALLENGE', sub: '' },
+};
+
+// ---------------------------------------------------------------- pacing (RunDirector)
+
+// A run is a sequence of phases with a target intensity (0–100) each; the live intensity eases
+// toward the target. Every cycle after the first starts from a higher floor, so the run escalates
+// in waves (tension → relief → more tension) instead of a flat climb.
+export const DIRECTOR = {
+  PHASES: {
+    warmup: { target: [22, 32], duration: [20, 28] },
+    pressure: { target: [45, 58], duration: [18, 28] },
+    event: { target: [60, 72], duration: [16, 26] },
+    escalation: { target: [70, 82], duration: [14, 22] },
+    peak: { target: [85, 96], duration: [12, 20] },
+    breather: { target: [28, 40], duration: [10, 16] },
+  },
+  CYCLE_FLOOR_STEP: 7, // each cycle's targets rise by this much (capped at 100)
+  EASE: 0.35, // intensity approach rate (per second, as a fraction of the gap)
+  PRESSURE_SWING: 0.4, // traffic pressure = run difficulty ± this × (intensity − 50) / 100
+  FIRST_EVENT_AT: [38, 55], // seconds: something happens early (first 90 s matter)
+  EVENT_GAP: [22, 40], // seconds between director events (outside chases)
+  QUIET_LIMIT: 16, // no notable moment for this long → schedule a formation or event now
+  FORMATION_GAP: [6, 11], // seconds between traffic formations at mid intensity (scaled by intensity)
+  // Hidden per-run pacing personality: how events, heat and weather are weighted this run.
+  PERSONALITIES: {
+    mixed: { weight: 3, heat: 1, events: {} },
+    traffic: { weight: 2, heat: 0.9, events: { heavyTraffic: 2, truckConvoy: 2, overtakeRush: 1.5 }, formations: 1.4 },
+    police: { weight: 2, heat: 1.35, events: { policePatrol: 2.5, rival: 0.6 } },
+    speed: { weight: 2, heat: 1, events: { openHighway: 2.5, speedZone: 2, rival: 1.8 } },
+    storm: { weight: 1, heat: 0.95, events: { rainstorm: 3, tunnel: 1.5, accident: 1.5 } },
+  },
+};
+
+// Traffic formations the director asks for (designed situations instead of pure random waves).
+export const FORMATIONS = {
+  MIN_INTENSITY: { gate: 25, stagger: 35, truckWall: 50, pack: 30, movingGap: 45, riskPickup: 30 },
+  WEIGHTS: { gate: 1.2, stagger: 1, truckWall: 0.8, pack: 1, movingGap: 0.8, riskPickup: 0.7 },
+  SPACING: 26, // meters between rows inside a formation
+};
+
+// ---------------------------------------------------------------- heat & police
+
+// Heat is earned by risky driving and shown as 0–5 stars (100 points each). From ★2 real
+// police cars come for you; the chase lasts until you escape (fill the escape meter) or are
+// busted. Higher heat = harder police AND bigger rewards.
+export const HEAT = {
+  PER_STAR: 100,
+  MAX: 560, // headroom above 5★ (500) so the top level holds through brief decay
+  CHASE_AT: 200, // ★2: police dispatched
+  SPEED_PER_SEC: 2.2, // while at ≥ 88% of top speed
+  SPEED_RATIO: 0.88,
+  BOOST_PER_SEC: 4,
+  COMBO_PER_TIER_SEC: 0.7, // per combo tier above x2
+  NEAR_MISS: [7, 12, 20], // by grade
+  PERFECT: 6,
+  CHICANE: 10,
+  POLICE_NEAR_MISS: 25,
+  SPOTTED: 110, // blasting past a patrol
+  POLICE_HIT: 30,
+  ROADBLOCK_CRASH: 40,
+  DECAY_CALM: 12, // per second when driving calmly (below 75% top speed, no risky action for 4 s)
+  DECAY: 1.2, // per second otherwise (outside chases)
+  CALM_RATIO: 0.75,
+  WARMUP_GAIN: 0.5, // heat builds slower in the first 25 s
+  WARMUP_SECONDS: 25,
+  ESCAPE_KEEP: 0.35, // share of heat kept after escaping (the police remember you)
+  SCORE_BONUS_PER_STAR: 0.1, // +10% points per heat star (heat is opportunity, not only danger)
 };
 
 export const POLICE = {
-  MIN_DISTANCE: 2500, // not before this far into a run
-  COOLDOWN: 3500, // meters between pursuits
-  TRIGGER_SPEED_RATIO: 0.9,
-  TRIGGER_TIER: 3, // or combo x5+
-  CHANCE_PER_SEC: 0.07,
-  DURATION: 30,
-  START_GAP: 90,
-  MAX_GAP: 120,
-  SPEED_RATIO: 0.78, // police cruise at this share of the player's top speed
-  CRASH_GAP_LOSS: 25,
-  ESCAPE_POINTS: 2500,
+  // Speed of police units as a share of the player's current top speed (no boost), by heat star.
+  SPEED_RATIO: [0, 0.94, 0.97, 1.0, 1.04, 1.08],
+  UNITS: [0, 0, 1, 2, 2, 3], // units in pursuit by star
+  SPAWN_DZ: -36, // meters behind the player where units appear (off screen)
+  CATCH_UP: 10, // m/s faster than the player while closing in from far behind
+  WARN_SECONDS: 3.5, // siren + rear-view warning before the first unit reaches the player
+  REDISPATCH: 6, // seconds before a lost unit is replaced (if the chase goes on)
+  LOST_DZ: -55, // a unit this far behind has lost sight of you
+  VIEW_AHEAD: 90, // a unit ahead within this range still sees you
+  PRESSURE_DZ: 12, // a unit this close (either side) is on you
+  INTERCEPT_FROM_STAR: 3,
+  INTERCEPT_DZ: 28, // interceptors hold this far ahead…
+  BRAKE_CHECK_TIME: 1.2, // …and brake-check (after a warning) for this long
+  BRAKE_CHECK_WARN: 0.8,
+  RAM_FROM_STAR: 4,
+  RAM_WARN: 0.9,
+  RAM_COOLDOWN: 8,
+  ESCAPE_RATE: [0.06, 0.11], // per second while unseen, from slow to top speed
+  ESCAPE_FROM_DZ: 20, // pursuers farther behind than this let the meter fill (partially)
+  ESCAPE_BASE: 0.012, // per second otherwise, as long as nobody is on you (chases always end)
+  ESCAPE_DRAIN: 0.05, // per second while a unit is close
+  ESCAPE_CRASH: 0.2,
+  ESCAPE_PASS: 0.12, // overtaking a police unit
+  ESCAPE_ROADBLOCK: 0.2,
+  BUST_RATE: 0.4, // per second while boxed in (unit close and you are slow)
+  BUST_SLOW_KMH: 110,
+  BUST_HIT: 0.3,
+  BUST_DECAY: 0.25,
   BUSTED_DAMAGE: 25,
+  ESCAPE_POINTS: [0, 400, 900, 1800, 3000, 4500], // by heat star escaped
+  PASS_POINTS: 250,
+  PATROL_SPEED_KMH: 140,
+  PATROL_BLAST_KMH: 190, // passing a patrol faster than this = spotted
+  PATROL_POINTS: 500,
+};
+
+export const ROADBLOCK = {
+  FROM_STAR: 4,
+  COOLDOWN: 20, // seconds between roadblocks
+  SPIKES_FROM_STAR: 5,
+  SPIKE_TIME: 3, // seconds of reduced grip and speed after hitting a spike strip
+  SPIKE_GRIP: 0.6,
+  SPIKE_SPEED: 0.8,
+  POINTS: 600,
+};
+
+// ---------------------------------------------------------------- rival racer
+
+export const RIVAL = {
+  DURATION: 30, // seconds: be ahead when the clock runs out
+  SPEED_RATIO: 1.0, // of the player's top speed (no boost)…
+  BOOST_KMH: 45, // …plus short boost bursts, like the player
+  BOOST_TIME: 2.2,
+  BOOST_COOLDOWN: [6, 10],
+  POINTS: 2500,
+  NAMES: ['VEX', 'NOVA', 'RAZOR', 'KITE', 'ONYX', 'JINX'],
+};
+
+// ---------------------------------------------------------------- skill moves
+
+export const SKILL = {
+  PERFECT_DODGE_WINDOW: 0.45, // the car was dead ahead this recently when you slipped past it
+  PERFECT_DODGE_POINTS: 400,
+  PERFECT_DODGE_BOOST: 18,
+  SLINGSHOT_CHARGE: 0.75, // slipstream charge needed
+  SLINGSHOT_KMH: 30, // extra speed for the pull-out
+  SLINGSHOT_TIME: 1.6,
+  SLINGSHOT_POINTS: 250,
+  TRUCK_NEAR_MISS_MULT: 1.5,
+  CLOSE_CALL_SCALE: 0.3, // time scale of the rare cinematic close call…
+  CLOSE_CALL_TIME: 0.12, // …for this long (real seconds)
+  CLOSE_CALL_COOLDOWN: 25,
+  CLOSE_CALL_MIN_KMH: 230,
+};
+
+// Combo milestones: a few meaningful steps, not a new mechanic per multiplier.
+export const COMBO_MILESTONES = {
+  BOOST_GAIN_FROM: 3, // x3+: +25% boost from risky moves
+  BOOST_GAIN: 1.25,
+  FLOW_AT: 10, // x10: FLOW — ends on a collision or when the combo drops below FLOW_KEEP
+  FLOW_KEEP: 8,
+  FLOW_BOOST_GAIN: 1.5,
+  FLOW_SCORE: 1.25,
+};
+
+// Collisions are graded: a light scrape isn't a combo-killer; a head-on hit is.
+export const CONTACT = {
+  SCRAPE_MAX_PEN: 0.35, // side contact with less overlap than this (fraction) = light scrape
+  SCRAPE_DAMAGE: 5,
+  SCRAPE_SPEED_KEEP: 0.94,
+  SCRAPE_COMBO_TIERS: 1, // tiers lost
+  SIDE_COMBO_TIERS: 2,
+  CONE_SPEED_KEEP: 0.88, // roadwork cones: knocked flying, small penalty
+  CONE_DAMAGE: 3,
 };
 
 // ---------------------------------------------------------------- garage

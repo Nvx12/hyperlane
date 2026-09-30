@@ -5,14 +5,17 @@ const TOP_TIER = TIERS.length - 1;
 
 // Score = distance (scaled by speed) + skill actions, all multiplied by the combo multiplier.
 // Risky actions add combo points; tiers x1 → x10. Driving "safely" (no risky action within the
-// window) drops one tier at a time; a collision resets everything.
+// window) drops one tier at a time. Collisions are graded: a scrape costs a tier or two, a real
+// crash resets everything. `scale` (heat stars, FLOW) multiplies every point on top.
 export class ScoreSystem {
   constructor() {
     this.stats = {
       nearMisses: 0, insaneMisses: 0, overtakes: 0, perfectOvertakes: 0, pickups: 0, crashes: 0,
       topSpeed: 0, bestMultiplier: 1, boostTime: 0, highSpeedTime: 0, cleanDistance: 0, bestCleanDistance: 0,
       chicanes: 0, legendPasses: 0, policeEscapes: 0, longestChase: 0, creditChips: 0,
+      escapeStars: 0, heatEscaped: 0, maxHeat: 0, rivalsBeaten: 0, challenges: 0, perfectDodges: 0, slingshots: 0,
     };
+    this.scale = 1;
     this.reset();
   }
 
@@ -24,6 +27,7 @@ export class ScoreSystem {
     this.comboTimer = 0;
     this.multiplier = 1;
     this.tierChange = 0; // +1 on tier up, -1 on decay, consumed by the game each frame
+    this.scale = 1;
     this.nextCheckpoint = SCORE.CHECKPOINT_DISTANCE;
     for (const k in this.stats) this.stats[k] = 0;
     this.stats.bestMultiplier = 1;
@@ -35,7 +39,7 @@ export class ScoreSystem {
     this.stats.cleanDistance += meters;
     if (this.stats.cleanDistance > this.stats.bestCleanDistance) this.stats.bestCleanDistance = this.stats.cleanDistance;
     const perMeter = SCORE.POINTS_PER_METER + Math.max(0, kmh - SCORE.SPEED_BONUS_FROM_KMH) / SCORE.SPEED_BONUS_DIVISOR;
-    this.score += meters * perMeter * this.multiplier * pointsScale;
+    this.score += meters * perMeter * this.multiplier * pointsScale * this.scale;
     if (kmh > this.stats.topSpeed) this.stats.topSpeed = kmh;
   }
 
@@ -43,7 +47,7 @@ export class ScoreSystem {
   // `risky` actions refresh the decay window; safe ones (plain overtakes, checkpoints) only add
   // a little combo and let it keep decaying — so careful driving can't hold a big multiplier.
   award(basePoints, comboGain = 0, risky = true) {
-    const points = Math.round(basePoints * this.multiplier);
+    const points = Math.round(basePoints * this.multiplier * this.scale);
     this.score += points;
     if (comboGain > 0) this.addCombo(comboGain, risky);
     return points;
@@ -64,6 +68,21 @@ export class ScoreSystem {
       this.tierChange = 1;
       if (this.multiplier > this.stats.bestMultiplier) this.stats.bestMultiplier = this.multiplier;
     }
+  }
+
+  // Light contact: lose a tier or two instead of everything. Returns the multiplier lost from.
+  dropTiers(n) {
+    const lost = this.multiplier;
+    if (this.tier === 0) {
+      this.comboPoints = 0;
+      return lost;
+    }
+    this.tier = Math.max(0, this.tier - n);
+    this.comboPoints = TIERS[this.tier].at;
+    this.multiplier = TIERS[this.tier].mult;
+    this.comboTimer = COMBO.WINDOW;
+    this.tierChange = -1;
+    return lost;
   }
 
   // Returns the multiplier that was lost (1 if there was nothing to lose).
