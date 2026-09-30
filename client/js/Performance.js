@@ -18,7 +18,8 @@ export const QUALITY = {
 // stuttering 45). Only reached when the device is genuinely struggling.
 const EXTRA_STEPS = [{ scale: 0.85 }, { scale: 0.75 }, { scale: 0.75, fps: 30 }];
 
-const SLOW_RATIO = 1.22; // average interval above target × this = struggling
+const SLOW_RATIO = 1.1; // AUTO: average interval above target × this (≈55 fps at 60) = step cosmetics down
+const FLOOR_RATIO = 1.3; // manual tiers: only fall back to 30 fps below ≈46 fps (a choice is respected)
 const SLOW_GRACE = 3; // seconds of struggle before stepping down
 const FAST_CPU_RATIO = 0.35; // CPU work under this share of the budget = headroom
 const FAST_GRACE = 12; // seconds of headroom before trying one step up (AUTO only)
@@ -132,7 +133,8 @@ export class PerformanceManager {
     }
     const target = 1000 / this.targetFps;
     const dt = intervalMs / 1000;
-    if (this.frameAvg > target * SLOW_RATIO) {
+    const slowRatio = this.mode === 'auto' ? SLOW_RATIO : FLOOR_RATIO;
+    if (this.frameAvg > target * slowRatio) {
       this.fastTime = 0;
       this.slowTime += dt;
       if (this.slowTime < SLOW_GRACE) return false;
