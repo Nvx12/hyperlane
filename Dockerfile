@@ -20,9 +20,10 @@ WORKDIR /app
 
 COPY --from=build /app/package.json ./
 COPY --from=build /app/dist ./dist
-# The server shares game rules (balance, routes, version) with the client for validation.
-COPY client/js/balance.js client/js/version.js ./client/js/
-COPY client/js/data/environments.js ./client/js/data/
+# The server runs the game's own rules (progression engine, balance, missions, achievements,
+# name validation, routes, version), so it gets the client's modules — the whole directory, so a
+# new shared import can never be missing from the image.
+COPY client/js ./client/js
 COPY server ./server
 
 RUN mkdir -p /data && chown node:node /data
