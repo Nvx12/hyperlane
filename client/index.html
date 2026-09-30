@@ -58,17 +58,19 @@
     <canvas id="game" aria-label="Night Vector game view"></canvas>
 
     <!-- ============================================================ HUD (landscape phone)
-         top-left score + hull · top-center combo/events · top-right speed + pause ·
-         bottom-center boost. The corners below belong to the thumbs. -->
+         The centre of the screen belongs to the road: nothing routine is drawn there.
+         top-left score + bonus feed · top-center combo (+ hazard banner) · top-right speed,
+         pause, mission chip · bottom-center hull + boost. The lower corners belong to the thumbs. -->
     <div id="hud" class="hud hidden" aria-hidden="true">
       <div class="hud-tl">
         <span class="hud-value" id="hud-score">0</span>
         <span class="hud-sub">BEST <b id="hud-best">0</b><span class="hud-dist"> · <span id="hud-distance">0.00</span> KM</span></span>
-        <div class="hull" id="meter-health"><i id="hud-health"></i></div>
+        <div class="bonus-feed" id="bonus-feed" aria-hidden="true"></div>
       </div>
 
       <div class="hud-mult" id="hud-mult-block" data-tier="0">
         <span class="mult-value" id="hud-mult">x1</span>
+        <span class="mult-label">COMBO</span>
         <div class="mult-bar"><i id="hud-mult-bar"></i></div>
         <div class="combo-timer"><i id="hud-combo-timer"></i></div>
         <span class="slip-chip" id="hud-slipstream">Slipstream</span>
@@ -80,6 +82,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
         </button>
       </div>
+      <div class="mission-chip" id="mission-chip" hidden><span id="mission-chip-text"></span><i id="mission-chip-bar"></i></div>
 
       <div class="event-banner" id="event-banner">
         <span class="event-kicker" id="event-kicker"></span>
@@ -88,11 +91,13 @@
         <div class="event-bar"><i id="event-bar"></i></div>
       </div>
 
-      <div class="boost-meter" id="meter-boost">
-        <span class="boost-label">BOOST</span>
-        <div class="bar"><i id="hud-boost"></i></div>
+      <div class="bottom-meters">
+        <div class="hull" id="meter-health"><i id="hud-health"></i></div>
+        <div class="boost-meter" id="meter-boost">
+          <div class="bar"><i id="hud-boost"></i></div>
+          <span class="boost-label">BOOST</span>
+        </div>
       </div>
-      <div class="mission-tracker" id="mission-tracker" hidden></div>
     </div>
 
     <div id="hit-left" class="hit-edge left" aria-hidden="true"></div>

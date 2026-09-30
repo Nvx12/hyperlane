@@ -231,7 +231,17 @@ export class Goals {
       const obj = OBJECTIVES[m.type];
       const v = Math.min(m.target, this.missionValue(m, run));
       const shown = obj.unit === 'km' ? v.toFixed(1) : Math.floor(v);
-      return { text: objectiveText(m.type, m.target), progress: `${shown}/${m.target}`, done: v >= m.target };
+      return { text: objectiveText(m.type, m.target), short: obj.short, progress: `${shown}/${m.target}`, ratio: v / m.target, done: v >= m.target };
     });
+  }
+
+  // The single in-race mission indicator: the unfinished mission closest to done. Completions
+  // are announced in the bonus feed; once everything is done the chip shows a tick.
+  chipItem(run) {
+    let best = null;
+    for (const item of this.trackerItems(run)) {
+      if (!best || (best.done && !item.done) || (item.done === best.done && item.ratio > best.ratio)) best = item;
+    }
+    return best;
   }
 }

@@ -1,6 +1,6 @@
 // Mission and daily-challenge objective templates.
 // `stat(run)` reads the value from a run summary. `single: true` means it must be achieved within
-// one run; otherwise progress accumulates across runs until complete.
+// one run; otherwise progress accumulates across runs until complete. `short` is the in-race chip label.
 
 const nice = n => {
   if (n >= 1000) return Math.round(n / 1000) * 1000;
@@ -10,20 +10,20 @@ const nice = n => {
 };
 
 export const OBJECTIVES = {
-  nearMisses: { stat: r => r.nearMisses, text: n => `Perform ${n} near misses` },
-  overtakes: { stat: r => r.overtakes, text: n => `Overtake ${n} cars` },
-  perfect: { stat: r => r.perfectOvertakes, text: n => `Land ${n} perfect overtakes` },
-  chicanes: { stat: r => r.chicanes, text: n => `Clear ${n} chicane${n > 1 ? 's' : ''}` },
-  insane: { stat: r => r.insaneMisses, text: n => `Pull off ${n} INSANE near miss${n > 1 ? 'es' : ''}` },
-  boostTime: { stat: r => Math.floor(r.boostTime), text: n => `Use boost for ${n} seconds` },
-  police: { stat: r => r.policeEscapes, text: n => (n > 1 ? `Escape ${n} police pursuits` : 'Escape a police pursuit') },
-  distance: { stat: r => r.distance / 1000, text: n => `Drive ${n} km`, unit: 'km' },
-  clean: { stat: r => r.bestCleanDistance / 1000, text: n => `Drive ${n} km without crashing`, unit: 'km', single: true },
-  runDistance: { stat: r => r.distance / 1000, text: n => `Drive ${n} km in one run`, unit: 'km', single: true },
-  speed: { stat: r => r.topSpeed, text: n => `Reach ${n} km/h`, single: true },
-  hold: { stat: r => r.highSpeedTime, text: n => `Maintain 200 km/h for ${n} seconds`, single: true },
-  combo: { stat: r => r.bestMultiplier, text: n => `Reach a x${n} combo`, single: true },
-  score: { stat: r => r.score, text: n => `Score ${n.toLocaleString('en-US')} in one run`, single: true },
+  nearMisses: { short: 'NEAR MISSES', stat: r => r.nearMisses, text: n => `Perform ${n} near misses` },
+  overtakes: { short: 'OVERTAKES', stat: r => r.overtakes, text: n => `Overtake ${n} cars` },
+  perfect: { short: 'PERFECT', stat: r => r.perfectOvertakes, text: n => `Land ${n} perfect overtakes` },
+  chicanes: { short: 'CHICANES', stat: r => r.chicanes, text: n => `Clear ${n} chicane${n > 1 ? 's' : ''}` },
+  insane: { short: 'INSANE', stat: r => r.insaneMisses, text: n => `Pull off ${n} INSANE near miss${n > 1 ? 'es' : ''}` },
+  boostTime: { short: 'S BOOST', stat: r => Math.floor(r.boostTime), text: n => `Use boost for ${n} seconds` },
+  police: { short: 'ESCAPES', stat: r => r.policeEscapes, text: n => (n > 1 ? `Escape ${n} police pursuits` : 'Escape a police pursuit') },
+  distance: { short: 'KM', stat: r => r.distance / 1000, text: n => `Drive ${n} km`, unit: 'km' },
+  clean: { short: 'KM CLEAN', stat: r => r.bestCleanDistance / 1000, text: n => `Drive ${n} km without crashing`, unit: 'km', single: true },
+  runDistance: { short: 'KM', stat: r => r.distance / 1000, text: n => `Drive ${n} km in one run`, unit: 'km', single: true },
+  speed: { short: 'KM/H', stat: r => r.topSpeed, text: n => `Reach ${n} km/h`, single: true },
+  hold: { short: 'S AT 200', stat: r => r.highSpeedTime, text: n => `Maintain 200 km/h for ${n} seconds`, single: true },
+  combo: { short: 'COMBO', stat: r => r.bestMultiplier, text: n => `Reach a x${n} combo`, single: true },
+  score: { short: 'SCORE', stat: r => r.score, text: n => `Score ${n.toLocaleString('en-US')} in one run`, single: true },
 };
 
 // Missions: targets scale gently with driver level. minLevel keeps early missions approachable.

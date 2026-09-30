@@ -1,3 +1,5 @@
+import { BonusFeed, PRIORITY } from './BonusFeed.js';
+
 const TOAST_LIMIT = 2; // phone screens: never stack more than two
 const TOAST_TIME = 2800;
 
@@ -38,12 +40,16 @@ export class UIManager {
       bannerTitle: $('event-title'),
       bannerSub: $('event-sub'),
       bannerBar: $('event-bar'),
-      tracker: $('mission-tracker'),
       pauseMissions: $('pause-missions'),
+      missionChip: $('mission-chip'),
+      missionChipText: $('mission-chip-text'),
+      missionChipBar: $('mission-chip-bar'),
     };
     this.screens = {};
     document.querySelectorAll('.screen').forEach(s => { this.screens[s.id.replace('screen-', '')] = s; });
     this.numberFormat = new Intl.NumberFormat('en-US');
+    this.feed = new BonusFeed($('bonus-feed'), n => this.format(n));
+    this.missionChipState = '';
     this.cache = {};
     this.resetCache();
     this.fpsVisible = false;
@@ -91,6 +97,8 @@ export class UIManager {
     this.el.hud.classList.toggle('intro', visible && intro);
     this.updateTouchVisibility();
     if (visible) this.resetCache();
+    this.feed.clear();
+    this.setMissionChip(null);
     if (!visible) this.hideBanner();
   }
 
@@ -268,12 +276,13 @@ export class UIManager {
     this.$('race-intro').classList.remove('visible');
   }
 
-  peekMissions(on) {
-    this.el.tracker.classList.toggle('peek', on);
-  }
-
-  // Non-blocking notification (achievements, unlocks, missions, level-ups).
+  // Non-blocking notification. During a race it goes to the bonus feed instead (compact, top
+  // left) so nothing pops up over the road; in menus it is a toast at the bottom.
   toast(kicker, title, variant = '') {
+    if (this.hudVisible) {
+      this.feed.push(title, 0, variant === 'achievement' ? PRIORITY.MAJOR : PRIORITY.IMPORTANT, variant, `toast:${title}`);
+      return;
+    }
     const box = this.el.toasts;
     while (box.children.length >= TOAST_LIMIT) box.firstElementChild.remove();
     const node = document.createElement('div');
@@ -284,14 +293,29 @@ export class UIManager {
     setTimeout(() => node.remove(), TOAST_TIME + 400);
   }
 
-  // Compact in-race list of active mission progress. Rebuilt only when progress text changes.
+  // Mission list on the pause screen. Rebuilt only when progress text changes.
   setMissionTracker(items) {
     const html = items.map(m => `<div class="track ${m.done ? 'done' : ''}"><span>${escapeHtml(m.text)}</span><b>${escapeHtml(m.progress)}</b></div>`).join('');
     if (html !== this.trackerHtml) {
       this.trackerHtml = html;
-      this.el.tracker.innerHTML = html;
       this.el.pauseMissions.innerHTML = html ? `<span class="hud-label">Missions</span>${html}` : '';
     }
+  }
+
+  // The one in-race mission indicator: the active mission closest to done, as a small chip
+  // under the speed. item: { short, progress, ratio, done } or null.
+  setMissionChip(item) {
+    const key = item ? `${item.progress} ${item.short}|${item.done}` : '';
+    if (key === this.missionChipState) return;
+    const wasDone = this.missionChipState.endsWith('|true');
+    this.missionChipState = key;
+    const el = this.el;
+    el.missionChip.hidden = !item;
+    if (!item) return;
+    el.missionChipText.textContent = item.done ? `✓ ${item.short}` : `${item.progress} ${item.short}`;
+    el.missionChipBar.style.transform = `scaleX(${Math.min(1, item.ratio)})`;
+    el.missionChip.classList.toggle('done', item.done);
+    if (item.done && !wasDone) this.restartAnimation(el.missionChip, 'flash');
   }
 
   // ---------------------------------------------------------------- results

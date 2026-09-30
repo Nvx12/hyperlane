@@ -1,12 +1,13 @@
-import { CAMERA, COLLISION, PALETTE, TIER_COLORS } from './config.js';
+import { CAMERA, COLLISION } from './config.js';
 import { SCORE, NEAR_MISS, COMBO, BOOST, SLIPSTREAM, RARE_TRAFFIC } from './balance.js';
 import { approach, sign } from './utils.js';
+import { PRIORITY } from './BonusFeed.js';
 
-const NEAR_MISS_COLORS = [PALETTE.PINK, '#ff5ad1', '#c86bff'];
+const NEAR_MISS_VARIANTS = ['near', 'near', 'insane'];
 const HOLD_KMH = 200; // "maintain 200 km/h" tracking for missions/records
 
 // Reads the traffic around the player every frame and turns skillful driving into points,
-// combo, boost and feedback. Collisions are detected here and resolved by the game.
+// combo, boost and feedback (bonus feed lines, never text over the road). Collisions are detected here and resolved by the game.
 export class SkillSystem {
   constructor(game) {
     this.game = game;
@@ -65,10 +66,11 @@ export class SkillSystem {
     p.slipstream = approach(p.slipstream, slip ? 1 : 0, (slip ? SLIPSTREAM.BUILD : SLIPSTREAM.DECAY) * dt);
   }
 
-  award(label, base, comboGain, color, size = 24) {
+  // Scores an action and lists it in the bonus feed (repeats merge: "NEAR MISS ×3 +750").
+  award(label, base, comboGain, variant = '') {
     const g = this.game;
     const points = g.score.award(base, comboGain);
-    g.effects.popAtPlayer(`${label} +${points}`, color, g.playerScreen, size);
+    g.ui.feed.push(label, points, PRIORITY.ROUTINE, variant);
     return points;
   }
 
@@ -97,7 +99,7 @@ export class SkillSystem {
       stats.nearMisses++;
       if (grade.grade === 2) stats.insaneMisses++;
       p.addBoost(grade.boost);
-      this.award(grade.label, grade.points, grade.combo, NEAR_MISS_COLORS[grade.grade], 24 + grade.grade * 3);
+      this.award(grade.label, grade.points, grade.combo, NEAR_MISS_VARIANTS[grade.grade]);
       g.effects.nearMissBurst(g.playerScreen, side, grade.grade);
       g.camera.addTrauma(0.08 + 0.08 * grade.grade);
       if (grade.grade >= 1) g.camera.kick(0.015 + 0.02 * grade.grade);
@@ -111,7 +113,7 @@ export class SkillSystem {
     if (p.boosting) comboGain += COMBO.GAIN.boostOvertake;
     if (car.lineupAt >= 0 && g.time - car.lineupAt < SCORE.PERFECT_WINDOW && ratio >= SCORE.PERFECT_MIN_RATIO) {
       stats.perfectOvertakes++;
-      this.award('PERFECT OVERTAKE', SCORE.PERFECT_OVERTAKE, COMBO.GAIN.perfect + (p.boosting ? COMBO.GAIN.boostOvertake : 0), PALETTE.GOLD);
+      this.award('PERFECT OVERTAKE', SCORE.PERFECT_OVERTAKE, COMBO.GAIN.perfect + (p.boosting ? COMBO.GAIN.boostOvertake : 0), 'gold');
       g.audio.perfect();
     } else {
       // Plain overtakes score quietly (a soft tick) so near-miss / perfect pops stay meaningful.
@@ -124,13 +126,12 @@ export class SkillSystem {
     if (car.rare) {
       stats.legendPasses++;
       stats.bonusCredits += RARE_TRAFFIC.PASS_CREDITS;
-      this.award('LEGEND PASS', RARE_TRAFFIC.PASS_POINTS, COMBO.GAIN.legend, PALETTE.GOLD, 28);
-      g.effects.callout(`+${RARE_TRAFFIC.PASS_CREDITS} CREDITS`, PALETTE.GOLD, g.camera, 26, 0.36);
+      this.award('LEGEND PASS', RARE_TRAFFIC.PASS_POINTS, COMBO.GAIN.legend, 'gold');
       g.audio.record();
     }
     if (car.patternSlot >= 0 && traffic.resolvePattern(car, false)) {
       stats.chicanes++;
-      this.award('CHICANE CLEARED', SCORE.CHICANE, COMBO.GAIN.chicane, PALETTE.VIOLET, 26);
+      this.award('CHICANE', SCORE.CHICANE, COMBO.GAIN.chicane, 'violet');
     }
   }
 
@@ -155,7 +156,8 @@ export class SkillSystem {
       this.streakTimer += dt;
       if (this.streakTimer >= SCORE.SPEED_STREAK_TIME) {
         this.streakTimer = 0;
-        this.award('TOP SPEED', SCORE.SPEED_STREAK, COMBO.GAIN.speedStreak, PALETTE.VIOLET);
+        // Passive (holding speed), so it scores quietly like plain overtakes: no feed line.
+        this.game.score.award(SCORE.SPEED_STREAK, COMBO.GAIN.speedStreak);
       }
     } else {
       this.streakTimer = Math.max(0, this.streakTimer - dt);
@@ -165,19 +167,20 @@ export class SkillSystem {
       const km = Math.round(score.nextCheckpoint / 1000);
       score.nextCheckpoint += SCORE.CHECKPOINT_DISTANCE;
       const points = score.award(SCORE.CHECKPOINT, COMBO.GAIN.checkpoint, false);
-      g.effects.callout(`${km} KM  +${points}`, PALETTE.AMBER, g.camera);
+      g.ui.feed.push(`${km} KM`, points, PRIORITY.ROUTINE, 'amber');
       g.audio.checkpoint();
     }
 
     const best = g.bestScore();
     if (!this.recordAnnounced && best > 0 && score.score > best) {
       this.recordAnnounced = true;
-      g.effects.callout('NEW RECORD!', PALETTE.GREEN, g.camera, 38, 0.3, 1.6);
+      g.ui.feed.push('NEW RECORD', 0, PRIORITY.IMPORTANT, 'good');
       g.audio.record();
     }
   }
 
-  // Turns combo tier changes into feedback. Called once per frame.
+  // Turns combo tier changes into feedback on the combo block itself (no floating text).
+  // Called once per frame.
   comboFeedback() {
     const g = this.game;
     const score = g.score;
@@ -186,7 +189,6 @@ export class SkillSystem {
     score.tierChange = 0;
     if (change > 0) {
       const tier = score.tier;
-      g.effects.callout(`COMBO x${score.multiplier}`, TIER_COLORS[tier], g.camera, 30 + tier * 3, 0.22, 1.2);
       g.audio.comboUp(tier);
       g.ui.comboPulse(1);
       if (tier >= 4) g.camera.kick(0.03);

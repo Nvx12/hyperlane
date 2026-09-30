@@ -152,7 +152,7 @@ export const SCORE = {
 export const NEAR_MISS = [
   { label: 'INSANE', gap: 0.25, points: 500, combo: 3, boost: 25, grade: 2 },
   { label: 'VERY CLOSE', gap: 0.55, points: 250, combo: 2, boost: 16, grade: 1 },
-  { label: 'CLOSE', gap: 0.9, points: 100, combo: 1, boost: 10, grade: 0 },
+  { label: 'NEAR MISS', gap: 0.9, points: 100, combo: 1, boost: 10, grade: 0 },
 ];
 
 export const COMBO = {

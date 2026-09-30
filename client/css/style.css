@@ -88,11 +88,64 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
 .hud-sub { display: block; margin-top: 3px; font-size: clamp(10px, 2.7vmin, 14px); font-weight: 700; letter-spacing: 0.16em; color: var(--muted); }
 .hud-sub b { color: var(--amber); font-family: var(--font-display); letter-spacing: 0.04em; margin-left: 3px; }
 
+/* Bonus feed: routine rewards and compact important notices, under the score and above the
+   horizon. Newest on top, at most three lines (see BonusFeed.js). */
+.bonus-feed { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; min-height: 0; }
+.feed-row {
+  display: none;
+  align-items: baseline;
+  gap: 6px;
+  max-width: min(46vw, 320px);
+  padding: 2px 8px 2px 7px;
+  border-left: 2px solid var(--feed, var(--pink));
+  background: linear-gradient(90deg, rgba(8,4,20,0.55), rgba(8,4,20,0));
+  font-size: clamp(11px, 3vmin, 14px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.3s, transform 0.3s;
+}
+.feed-row.visible, .feed-row.leaving { display: flex; }
+.feed-row.visible { opacity: 1; }
+.feed-row.leaving { opacity: 0; transform: translateX(-10px); }
+.feed-row b { font-family: var(--font-display); font-weight: 900; color: var(--feed, var(--pink)); font-variant-numeric: tabular-nums; }
+.feed-row b:empty { display: none; }
+.feed-row span { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.feed-row em { font-style: normal; font-family: var(--font-display); color: var(--feed, var(--pink)); }
+.feed-row.enter { animation: feed-in 0.28s cubic-bezier(.2,.8,.2,1); }
+.feed-row.bump b { animation: feed-bump 0.25s ease-out; }
+@keyframes feed-in { from { opacity: 0; transform: translateX(-12px); } }
+@keyframes feed-bump { 40% { transform: scale(1.18); } }
+.feed-row.fv-near { --feed: var(--pink); }
+.feed-row.fv-insane { --feed: #c86bff; }
+.feed-row.fv-gold { --feed: var(--gold, #ffd35a); }
+.feed-row.fv-violet { --feed: #c86bff; }
+.feed-row.fv-cyan { --feed: var(--cyan); }
+.feed-row.fv-amber { --feed: var(--amber); }
+.feed-row.fv-good { --feed: var(--green); }
+.feed-row.fv-danger { --feed: var(--red); }
+/* Important / major notices: a touch larger and longer-lived, still a single line. */
+.feed-row.important, .feed-row.major { padding-block: 3px; background: linear-gradient(90deg, rgba(8,4,20,0.8), rgba(8,4,20,0.1)); }
+.feed-row.important span, .feed-row.major span { font-family: var(--font-display); letter-spacing: 0.1em; }
+.feed-row.fv-mission { --feed: #c86bff; }
+.feed-row.fv-achievement, .feed-row.fv-unlock { --feed: var(--amber); }
+
+/* Hull + boost share the bottom-centre strip behind the car (traffic is ahead, not here). */
+.bottom-meters {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--pad-b) + 4px);
+  width: clamp(130px, 21vw, 280px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .hull {
   position: relative;
-  width: clamp(110px, 19vw, 190px);
-  height: 7px;
-  margin-top: 6px;
+  width: 100%;
+  height: 6px;
   background: rgba(255,255,255,0.1);
   border-radius: 4px;
   overflow: hidden;
@@ -133,6 +186,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
   color: var(--tier);
   font-variant-numeric: tabular-nums;
 }
+.mult-label { display: block; margin-top: 1px; font-size: 9px; font-weight: 700; letter-spacing: 0.4em; color: var(--tier); opacity: 0.85; }
 .hud-mult[data-tier="4"] .mult-value, .hud-mult[data-tier="5"] .mult-value { animation: tier-throb 0.8s ease-in-out infinite; }
 @keyframes tier-throb { 50% { transform: scale(1.07); } }
 .mult-bar { width: clamp(90px, 17vw, 150px); height: 4px; margin: 5px auto 0; background: rgba(255,255,255,0.12); border-radius: 2px; overflow: hidden; }
@@ -179,15 +233,31 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
 .hud-pause svg { width: 22px; height: 22px; fill: currentColor; }
 .hud-pause:active { transform: scale(0.92); background: rgba(34,230,255,0.25); }
 
-.boost-meter {
+.boost-meter { text-align: center; }
+.boost-label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.36em; color: var(--cyan); margin-top: 3px; }
+
+/* Mission chip: the one in-race mission indicator, under speed + pause. */
+.mission-chip {
   position: absolute;
-  left: 50%;
-  bottom: calc(var(--pad-b) + 4px);
-  width: clamp(130px, 21vw, 280px);
-  transform: translateX(-50%);
-  text-align: center;
+  top: calc(var(--pad-t) + var(--tap) + 8px);
+  right: var(--pad-r);
+  min-width: 96px;
+  padding: 3px 8px 4px;
+  font-size: clamp(10px, 2.7vmin, 12px);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-align: right;
+  color: #d6d3f0;
+  background: rgba(8,4,20,0.5);
+  border-radius: 6px;
+  overflow: hidden;
 }
-.boost-label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.36em; color: var(--cyan); margin-bottom: 3px; }
+.mission-chip span { position: relative; }
+.mission-chip i { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: #c86bff; transform-origin: left; transform: scaleX(0); transition: transform 0.3s; }
+.mission-chip.done { color: var(--green); }
+.mission-chip.done i { background: var(--green); }
+.mission-chip.flash { animation: chip-flash 0.8s ease-out; }
+@keyframes chip-flash { 0% { background: rgba(61,255,162,0.45); } }
 .boost-meter .bar { position: relative; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0,0,0,0.4); }
 .boost-meter .bar i { position: absolute; inset: 0; background: linear-gradient(90deg, #1a8cff, var(--cyan)); transform-origin: left; transition: transform 0.12s linear; }
 .boost-meter.boosting .bar i { background: linear-gradient(90deg, var(--cyan), #fff); }
@@ -379,25 +449,31 @@ body.pad-active .touch-controls { display: none; }
 
 /* ================================================================== tutorial coach */
 
+/* Sits between the combo and the horizon: it must never reach the far road where traffic
+   appears (checked by the HUD QA script). Skip sits beside the text to keep it short. */
 .coach {
   position: absolute;
-  top: 24%;
+  top: calc(var(--pad-t) + 17vmin);
   left: 50%;
   transform: translateX(-50%);
   z-index: 6;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto auto;
   align-items: center;
-  gap: 6px;
-  max-width: min(560px, calc(100vw - 40px));
+  justify-items: center;
+  column-gap: 8px;
+  row-gap: 5px;
+  max-width: min(600px, calc(100vw - 40px));
   pointer-events: none;
   text-align: center;
 }
+.coach-steps { grid-column: 1; grid-row: 2; }
+.coach-skip { grid-column: 2; grid-row: 1; }
 .coach-text {
-  padding: 10px 18px;
+  padding: 7px 16px;
   font-family: var(--font-display);
   font-weight: 900;
-  font-size: clamp(15px, 5vmin, 24px);
+  font-size: clamp(14px, 4.4vmin, 22px);
   letter-spacing: 0.06em;
   background: rgba(8,4,20,0.8);
   border: 1px solid rgba(34,230,255,0.5);

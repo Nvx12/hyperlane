@@ -112,7 +112,6 @@ export const GAME = {
   CRASH_TIMESCALE: 0.22,
   GAMEOVER_INPUT_DELAY: 0.7,
   ENGINE_TOP_KMH: 420,
-  TEXT_STACK_WINDOW: 0.45,
 };
 
 export const BEAM = {
@@ -126,7 +125,6 @@ export const PERF = {
   MAX_DT: 1 / 20,
   HUD_INTERVAL: 1 / 15,
   MAX_PARTICLES: 520,
-  MAX_TEXTS: 14,
   SPEED_LINES: 64,
 };
 
@@ -144,5 +142,3 @@ export const PALETTE = {
   GOLD: '#ffd35a',
 };
 
-// HUD / callout color per combo tier index.
-export const TIER_COLORS = ['#8d8bb0', '#22e6ff', '#3dffa2', '#ffc247', '#ff2d95', '#c86bff'];

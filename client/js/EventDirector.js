@@ -1,7 +1,8 @@
-import { ROAD, CAMERA, TRAFFIC, PALETTE, laneCenter } from './config.js';
+import { ROAD, CAMERA, TRAFFIC, laneCenter } from './config.js';
 import { EVENTS, POLICE } from './balance.js';
 import { BARRIER_ROADWORK, BARRIER_CHECKPOINT } from './TrafficManager.js';
 import { rand, randInt, clamp } from './utils.js';
+import { PRIORITY } from './BonusFeed.js';
 
 
 const EVENT_KEYS = ['heavyTraffic', 'openHighway', 'tunnel', 'roadwork', 'checkpoint', 'rainstorm'];
@@ -134,7 +135,7 @@ export class EventDirector {
         if (ev.barrierZ + (ev.key === 'roadwork' ? ev.length : 3) < CAMERA.PLAYER_DEPTH - 5) {
           if (!ev.failed) {
             const label = ev.key === 'roadwork' ? 'ROADWORK CLEARED' : 'CHECKPOINT CLEARED';
-            g.skills.award(label, ev.cfg.points, 2, PALETTE.GREEN, 26);
+            g.skills.award(label, ev.cfg.points, 2, 'good');
             g.audio.perfect();
           }
           this.endEvent();
@@ -232,7 +233,6 @@ export class EventDirector {
     p.shown = -1;
     p.gap = POLICE.START_GAP;
     this.game.ui.showBanner('Police pursuit', `SURVIVE ${POLICE.DURATION} SECONDS`, '', 'police');
-    this.game.effects.callout('POLICE PURSUIT', '#7f95ff', this.game.camera, 34, 0.3, 1.4);
     this.game.audio.siren(true);
   }
 
@@ -249,18 +249,16 @@ export class EventDirector {
       stats.policeEscapes++;
       stats.bonusCredits += POLICE.ESCAPE_CREDITS;
       g.score.addBonus(POLICE.ESCAPE_POINTS);
-      g.effects.callout(`ESCAPED +${POLICE.ESCAPE_POINTS}`, PALETTE.GREEN, g.camera, 38, 0.3, 1.6);
-      g.effects.callout(`+${POLICE.ESCAPE_CREDITS} CREDITS`, PALETTE.GOLD, g.camera, 26, 0.37, 1.6);
+      g.ui.feed.push('POLICE ESCAPED', POLICE.ESCAPE_POINTS, PRIORITY.IMPORTANT, 'good');
       g.audio.escape();
       if (stats.bestMultiplier >= 10) g.save.flags.phantom = true; // the secret car's condition
     } else {
-      g.effects.callout('BUSTED', PALETTE.RED, g.camera, 44, 0.3, 1.4);
+      g.ui.feed.push('BUSTED', 0, PRIORITY.IMPORTANT, 'danger');
       g.score.breakCombo();
-      const applied = g.player.takeDamage(POLICE.BUSTED_DAMAGE);
+      g.player.takeDamage(POLICE.BUSTED_DAMAGE);
       g.effects.flash.damage = 1;
       g.camera.addTrauma(0.5);
       g.audio.crash(0.7);
-      g.effects.popAtPlayer(`-${applied} HULL`, PALETTE.RED, g.playerScreen);
       if (g.player.health <= 0) g.beginCrashSequence(1);
     }
   }

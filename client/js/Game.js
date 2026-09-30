@@ -1,4 +1,4 @@
-import { CAMERA, PLAYER, ROAD, GAME, BEAM, PERF, PALETTE, laneCenter } from './config.js';
+import { CAMERA, PLAYER, ROAD, GAME, BEAM, PERF, laneCenter } from './config.js';
 import { DIFFICULTY, DAMAGE, PICKUPS, SCORE } from './balance.js';
 import { clamp, lerp, rand, randInt, sign } from './utils.js';
 import { Camera } from './Camera.js';
@@ -36,6 +36,7 @@ import { PerformanceManager } from './Performance.js';
 import { Haptics } from './Haptics.js';
 import { Tutorial } from './Tutorial.js';
 import { BackNav } from './BackNav.js';
+import { PRIORITY } from './BonusFeed.js';
 
 export const STATE = Object.freeze({
   MENU: 'menu',
@@ -438,7 +439,7 @@ export class Game {
     this.ui.showScreen(null);
     this.ui.setHudVisible(true, true);
     this.ui.setMissionTracker(this.goals.trackerItems(null));
-    this.ui.peekMissions(true);
+    this.ui.setMissionChip(this.goals.chipItem(null));
     const ch = this.challenge && this.challenge.accepted ? this.challenge : null;
     // First race: the interactive tutorial starts at GO instead of a text tip.
     this.ui.showRaceIntro(ch ? `Challenge: beat ${ch.name}'s ${ch.score.toLocaleString('en-US')}`
@@ -495,7 +496,6 @@ export class Game {
   hideIntro() {
     this.introTimer = 0;
     this.ui.hideRaceIntro();
-    this.ui.peekMissions(false);
   }
 
   noteUnlock(car, events) {
@@ -865,6 +865,7 @@ export class Game {
     this.audio.updateEngine(dt, kmh / GAME.ENGINE_TOP_KMH, p.throttle, p.boosting, this.isRaceActive(), p.slipstream, this.road.cameraInTunnel);
     this.audio.updateMusic(this.musicIntensity(kmh));
     this.updateHud(dt);
+    if (this.ui.hudVisible) this.ui.feed.update(dt);
 
     if (this.state === STATE.CRASHING && this.crashTimer <= 0) this.gameOver();
   }
@@ -887,13 +888,18 @@ export class Game {
     this.goalTimer = GOAL_CHECK_INTERVAL;
     const run = this.liveRun();
     const done = this.goals.checkLive(run);
+    // Compact lines in the bonus feed; the full presentation waits for the results screen.
     for (const [variant, kicker, title] of done) {
-      this.ui.toast(kicker, title, variant);
-      if (variant === 'achievement') this.audio.achievement();
-      else this.audio.perfect();
+      if (variant === 'achievement') {
+        this.ui.feed.push(`ACHIEVEMENT · ${title}`, 0, PRIORITY.MAJOR, 'achievement');
+        this.audio.achievement();
+      } else {
+        this.ui.feed.push(kicker === 'Mission complete' ? 'MISSION COMPLETE' : kicker.toUpperCase(), 0, PRIORITY.IMPORTANT, 'mission');
+        this.audio.perfect();
+      }
       this.haptics.pulse('unlock');
     }
-    this.ui.setMissionTracker(this.goals.trackerItems(run));
+    this.ui.setMissionChip(this.goals.chipItem(run));
   }
 
   updateCountdown(dt) {
@@ -995,7 +1001,6 @@ export class Game {
   }
 
   onBoostStart() {
-    this.effects.callout('BOOST!', PALETTE.CYAN, this.camera, 40, 0.36, 0.9);
     this.audio.boost();
     this.haptics.pulse('boost');
     if (this.tutorial) this.tutorial.notify('boost');
@@ -1009,14 +1014,14 @@ export class Game {
     stats.pickups++;
     if (type === PICKUP_REPAIR) {
       p.repair(PICKUPS.REPAIR_AMOUNT);
-      this.skills.award('REPAIR', SCORE.PICKUP, 1, PALETTE.GREEN);
+      this.skills.award('REPAIR', SCORE.PICKUP, 1, 'good');
       this.effects.flash.pickup = 1;
     } else if (type === PICKUP_CREDITS) {
       stats.bonusCredits += PICKUPS.CREDIT_CHIP_VALUE;
-      this.skills.award('CREDIT CHIP', SCORE.PICKUP * 2, 1, PALETTE.GOLD);
+      this.skills.award('CREDIT CHIP', SCORE.PICKUP * 2, 1, 'gold');
     } else {
       p.addBoost(PICKUPS.BOOST_AMOUNT);
-      this.skills.award('BOOST CELL', SCORE.PICKUP, 1, PALETTE.CYAN);
+      this.skills.award('BOOST CELL', SCORE.PICKUP, 1, 'cyan');
       this.effects.flash.near = 0.6;
     }
     this.audio.pickup(type);
@@ -1064,7 +1069,7 @@ export class Game {
       if (car.patternSlot >= 0) this.traffic.resolvePattern(car, true);
     }
     if (this.tutorial) damage *= 0.5; // first-race lessons: hits hurt, but can't end the run
-    const applied = p.takeDamage(damage);
+    p.takeDamage(damage);
     if (this.tutorial && p.health < 30) p.health = 30;
     const lost = this.score.breakCombo();
     this.score.stats.crashes++;
@@ -1078,11 +1083,7 @@ export class Game {
 
     const ps = this.playerScreen;
     this.effects.impact(ps.x + dir * ps.w * (sideHit ? 0.5 : 0.2), ps.y - ps.h * (sideHit ? 0.4 : 0.9), ps.scale, !sideHit);
-    this.effects.popAtPlayer(`-${applied} HULL`, PALETTE.RED, ps);
-    if (lost > 1) {
-      this.effects.callout(`COMBO x${lost} LOST`, PALETTE.RED, this.camera, 26, 0.24, 1);
-      this.audio.comboDown();
-    }
+    if (lost > 1) this.audio.comboDown(); // the combo block shakes and drops (UIManager.comboPulse)
     if (p.health <= 0) this.beginCrashSequence(-dir);
   }
 

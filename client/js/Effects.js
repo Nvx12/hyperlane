@@ -1,23 +1,20 @@
-import { PERF, PALETTE, GAME, PLAYER } from './config.js';
+import { PERF, PALETTE, PLAYER } from './config.js';
 import { clamp, damp, rand } from './utils.js';
 import { ParticleSystem, SpeedLines, PARTICLE } from './ParticleSystem.js';
-import { FloatingTextPool } from './FloatingText.js';
 import { createVignette } from './Sprites.js';
 
-// All cosmetic feedback: particles, speed lines, floating text, screen flashes.
+// All cosmetic feedback: particles, speed lines, screen flashes. (Bonus text lives in the HUD
+// feed — see BonusFeed.js — never over the road.)
 // Nothing here affects gameplay, so graphics quality can scale it freely.
 export class Effects {
   constructor(bank) {
     this.bank = bank;
     this.particles = new ParticleSystem(PERF.MAX_PARTICLES, bank);
     this.speedLines = new SpeedLines(PERF.SPEED_LINES);
-    this.texts = new FloatingTextPool(PERF.MAX_TEXTS);
     this.flash = { damage: 0, near: 0, boost: 0, pickup: 0, insane: 0 };
     this.acc = { boost: 0, smoke: 0, sparks: 0, damage: 0, wind: 0, trail: 0 };
     this.vignettes = null;
     this.time = 0;
-    this.textStack = 0;
-    this.lastTextTime = -10;
     this.detail = 1; // 0..1 cosmetic detail from quality settings / auto-scaling
     this.trail = null; // cosmetic boost trail { rgb sprite } set from customization
   }
@@ -41,30 +38,16 @@ export class Effects {
 
   reset() {
     this.particles.clear();
-    this.texts.clear();
     const f = this.flash;
     f.damage = f.near = f.boost = f.pickup = f.insane = 0;
     for (const k in this.acc) this.acc[k] = 0;
-    this.textStack = 0;
-    this.lastTextTime = -10;
   }
 
-  // Score pop above the player car. Pops that arrive together stack instead of overlapping.
-  popAtPlayer(text, color, ps, size = 24) {
-    this.textStack = this.time - this.lastTextTime < GAME.TEXT_STACK_WINDOW ? (this.textStack + 1) % 4 : 0;
-    this.lastTextTime = this.time;
-    this.texts.spawn(text, ps.x, ps.y - ps.h * 1.7 - this.textStack * 30, color, size);
-  }
-
-  callout(text, color, cam, size = 34, yRatio = 0.3, life = 1.4) {
-    this.texts.spawn(text, cam.cx, cam.height * yRatio, color, size, life, 36);
-  }
 
   update(dt, speedIntensity, boosting) {
     this.time += dt;
     this.particles.update(dt);
     this.speedLines.update(dt, speedIntensity);
-    this.texts.update(dt);
     const f = this.flash;
     f.damage = Math.max(0, f.damage - dt * 2.2);
     f.near = Math.max(0, f.near - dt * 3.5);
@@ -169,7 +152,6 @@ export class Effects {
 
   renderScreen(ctx, cam, lowHealthPulse) {
     this.speedLines.render(ctx, cam);
-    this.texts.render(ctx);
     const v = this.vignettes;
     const f = this.flash;
     const W = cam.width;
