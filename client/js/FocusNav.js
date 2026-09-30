@@ -37,7 +37,7 @@ export function moveFocus(dir) {
   if (!items.length) return null;
   const current = document.activeElement;
   if (!current || !items.includes(current)) {
-    const first = items.find(el => el.classList.contains('btn-primary') || el.classList.contains('nav-play')) || items[0];
+    const first = items.find(el => el.classList.contains('btn-primary') || el.classList.contains('play-btn')) || items[0];
     first.focus({ preventScroll: false });
     return first;
   }

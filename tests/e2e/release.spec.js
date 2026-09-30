@@ -17,8 +17,7 @@ test.describe('release checks', () => {
     await expect(page.locator('#net-status')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('#net-status')).toHaveText(/offline|local only/i);
     // The game itself runs without the server.
-    await page.locator('[data-nav="play"]').click();
-    await page.locator('#screen-play [data-action="start"]').click();
+    await page.locator('.play-btn').click();
     await expect(page.locator('#hud')).not.toHaveClass(/hidden/);
     await context.unroute('**/*');
   });
@@ -72,7 +71,9 @@ test.describe('release checks', () => {
       await page.evaluate(b => { window.__pad.buttons[b].pressed = false; window.__pad.buttons[b].value = 0; }, i);
       await page.waitForTimeout(120);
     };
-    await press(13); // D-pad down → focus moves
+    await press(13); // D-pad down → focuses PLAY first
+    expect(await page.evaluate(() => document.activeElement.classList.contains('play-btn'))).toBe(true);
+    await press(13); // down again → a menu tile
     const focused = await page.evaluate(() => document.activeElement.dataset.nav);
     expect(focused).toBeTruthy();
 

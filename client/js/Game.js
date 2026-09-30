@@ -441,8 +441,8 @@ export class Game {
     this.ui.peekMissions(true);
     const ch = this.challenge && this.challenge.accepted ? this.challenge : null;
     // First race: the interactive tutorial starts at GO instead of a text tip.
-    this.ui.showRaceIntro(!this.save.flags.tutorial ? 'GET READY'
-      : ch ? `Challenge: beat ${ch.name}'s ${ch.score.toLocaleString('en-US')}` : tipFor(this.save.stats.races));
+    this.ui.showRaceIntro(ch ? `Challenge: beat ${ch.name}'s ${ch.score.toLocaleString('en-US')}`
+      : !this.save.flags.tutorial ? 'GET READY' : tipFor(this.save.stats.races));
     this.audio.setMusicMode('race');
     this.shell.refreshUpdateBanner();
     this.shell.checkOrientation();

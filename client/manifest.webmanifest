@@ -1,7 +1,8 @@
 {
   "name": "Night Vector — Neon Highway Racer",
   "short_name": "Night Vector",
-  "description": "Thread the traffic. Own the night. A neon arcade highway racer.",
+  "description": "Thread the traffic. Own the night. A neon arcade highway racer for your phone — plays offline.",
+  "prefer_related_applications": false,
   "id": "./",
   "start_url": "./?source=pwa",
   "scope": "./",
@@ -18,6 +19,7 @@
     { "src": "icons/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ],
   "screenshots": [
+    { "src": "screenshots/race-phone.jpg", "sizes": "1688x780", "type": "image/jpeg", "label": "Touch controls: steer left, brake and boost right" },
     { "src": "og-image.jpg", "sizes": "1200x630", "type": "image/jpeg", "form_factor": "wide", "label": "Racing through Neon City at night" }
   ]
 }
