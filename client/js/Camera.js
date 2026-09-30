@@ -68,7 +68,7 @@ export class Camera {
 
     this.trauma = Math.max(0, this.trauma - CAMERA.TRAUMA_DECAY * dt);
     // Trauma-squared keeps small bumps subtle; a road vibration that grows past ~180 km/h sells speed.
-    const vibration = Math.max(0, kmh - CAMERA.VIBRATION_FROM_KMH) * CAMERA.VIBRATION_PER_KMH + (player.boosting ? 1.1 : 0);
+    const vibration = Math.max(0, kmh - CAMERA.VIBRATION_FROM_KMH) * CAMERA.VIBRATION_PER_KMH + (player.boosting ? CAMERA.BOOST_VIBRATION : 0);
     const amp = (this.trauma * this.trauma * CAMERA.MAX_SHAKE + vibration) * this.shakeScale;
     const t = this.time;
     this.shakeX = amp * (Math.sin(t * 47.3) * 0.6 + Math.sin(t * 83.1 + 1.2) * 0.4);

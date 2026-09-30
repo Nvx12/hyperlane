@@ -29,17 +29,19 @@ export const CAMERA = {
   NEAR_CLIP: 1.2,
   FOLLOW: 0.72,
   FOLLOW_RATE: 5,
-  SPEED_FOV: 0.86,
-  BOOST_FOV: 0.8,
+  // Phone screens: a milder FOV widening keeps traffic silhouettes large enough to read at speed.
+  SPEED_FOV: 0.9,
+  BOOST_FOV: 0.86,
   FOV_FROM_KMH: 90, // calm below this…
   FOV_RANGE_KMH: 240, // …fully widened at 330 km/h
   FOV_RATE: 2.5,
   FOV_KICK_DECAY: 5,
-  MAX_SHAKE: 16,
-  MAX_ROLL: 0.018,
-  TRAUMA_DECAY: 1.6,
-  VIBRATION_FROM_KMH: 180,
-  VIBRATION_PER_KMH: 1 / 110,
+  MAX_SHAKE: 11, // px at full trauma (then × the shake setting: Low 0.35 / Normal 0.7)
+  MAX_ROLL: 0.014,
+  TRAUMA_DECAY: 1.9,
+  VIBRATION_FROM_KMH: 200,
+  VIBRATION_PER_KMH: 1 / 180,
+  BOOST_VIBRATION: 0.5,
 };
 
 // Physical/visual player constants; handling comes from the car profile (balance.js / garage).
@@ -70,10 +72,12 @@ export const TRAFFIC = {
   BRAKE_DECEL: 9,
   MIN_SPEED_KMH: 55,
   LANE_CHANGE_SPEED: 2.8,
-  MIN_BLINK_TIME: 0.75,
-  LANE_CHANGE_START_DEPTH: 75, // only start a lane change this far ahead of the player
-  LANE_CHANGE_MIN_DEPTH: 50, // abort pending changes that got closer than this
-  PLAYER_LANE_GUARD_DEPTH: 110, // never merge into the player's lane closer than this
+  // Thumb reaction is slower and less precise than a keyboard: longer indicator warning and
+  // lane changes only well ahead of the player.
+  MIN_BLINK_TIME: 1.0,
+  LANE_CHANGE_START_DEPTH: 85, // only start a lane change this far ahead of the player
+  LANE_CHANGE_MIN_DEPTH: 60, // abort pending changes that got closer than this
+  PLAYER_LANE_GUARD_DEPTH: 130, // never merge into the player's lane closer than this
   WALL_BAND: 14,
   WALL_FIX_MIN_DEPTH: 50,
   WALL_CHECK_INTERVAL: 0.25,

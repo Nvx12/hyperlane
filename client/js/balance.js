@@ -15,7 +15,7 @@ export const DIFFICULTY = {
   MAX_PER_WAVE: [1.35, 2.7],
   LANE_CHANGE: [0.05, 0.6], // spontaneous lane-change rate multiplier
   TRAFFIC_SPEED: [1, 1.2],
-  SAFE_TIME: [0.55, 0.38], // seconds of closing speed that must stay free of full-width walls
+  SAFE_TIME: [0.65, 0.46], // seconds of closing speed that must stay free of full-width walls (touch reaction margin)
   ROAD_CURVE: [0.018, 0.042],
   PLAYER_SPEED_BONUS: 0.1, // player top speed grows up to +10% with difficulty
   PATTERN_MIN: 0.3,

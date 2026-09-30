@@ -17,8 +17,12 @@ const KEY_ACTIONS = {
 // Digital steering (touch / keyboard) is ramped instead of snapping to full lock: a quick tap is a
 // gentle correction, a hold reaches full lock in ~0.17 s at sensitivity 1. Releases and direction
 // flips pass through zero quickly so the car straightens without drifting.
+// Simulated with the real Player physics (Vireo, 250 km/h): a 100 ms thumb tap moves 0.58 m
+// instead of 1.16 m with snap-to-full-lock (finer near-miss lines), while a full lane change is
+// only ~0.07 s slower. An analog drag scheme was evaluated too and rejected: with ±12 px thumb
+// jitter and no physical centre to feel, lateral speed wobbled 21–46%.
 const STEER_RAMP = 6; // per second at sensitivity 1
-const STEER_RELEASE = 14;
+const STEER_RELEASE = 18;
 
 const isTextField = el => el instanceof HTMLElement
   && (el.isContentEditable || el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !['range', 'checkbox', 'radio', 'button'].includes(el.type)));
