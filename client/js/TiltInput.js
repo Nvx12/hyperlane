@@ -56,18 +56,29 @@ export class TiltInput {
   async start() {
     if (!this.supported) return 'unsupported';
     const DOE = window.DeviceOrientationEvent;
+    // iOS Safari, and recent Chromium too, gate the sensor behind requestPermission(). Chromium
+    // may answer 'prompt'; only an explicit refusal counts, the sensor timeout below decides the rest.
     if (typeof DOE.requestPermission === 'function') {
       try {
-        if ((await DOE.requestPermission()) !== 'granted') return 'denied';
+        if ((await DOE.requestPermission()) === 'denied') return 'denied';
       } catch {
         return 'denied';
       }
     }
     window.addEventListener('deviceorientation', this.onEvent);
     this.active = true;
-    // Desktop browsers expose the API without a sensor: no events ever arrive.
+    // Desktop browsers expose the API without a sensor: no events ever arrive. A real sensor
+    // answers within a frame or two, so resolve on the first reading instead of the timeout.
     const started = performance.now();
-    await new Promise(resolve => setTimeout(resolve, SENSOR_TIMEOUT_MS));
+    await new Promise(resolve => {
+      const timer = setTimeout(done, SENSOR_TIMEOUT_MS);
+      function done() {
+        clearTimeout(timer);
+        window.removeEventListener('deviceorientation', done);
+        resolve();
+      }
+      window.addEventListener('deviceorientation', done);
+    });
     if (this.lastEvent < started) {
       this.stop();
       return 'no-sensor';
