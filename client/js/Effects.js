@@ -32,9 +32,10 @@ export class Effects {
     };
   }
 
-  setDetail(detail) {
+  // detail: 0..1 cosmetic density; particleBudget: hard cap for this graphics tier.
+  setDetail(detail, particleBudget = PERF.MAX_PARTICLES) {
     this.detail = detail;
-    this.particles.setLimitScale(0.35 + 0.65 * detail);
+    this.particles.setLimit(particleBudget);
     this.speedLines.setLimitScale(0.4 + 0.6 * detail);
   }
 

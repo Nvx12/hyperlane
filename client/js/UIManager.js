@@ -1,8 +1,5 @@
-const SPEEDO_ARC = 395.84; // 270° of a r=84 circle
-const SPEEDO_CIRC = 527.79;
-const SPEEDO_MAX_KMH = 420;
-const TOAST_LIMIT = 3;
-const TOAST_TIME = 3600;
+const TOAST_LIMIT = 2; // phone screens: never stack more than two
+const TOAST_TIME = 2800;
 
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -26,7 +23,7 @@ export class UIManager {
       distance: $('hud-distance'),
       speed: $('hud-speed'),
       speedo: $('speedo'),
-      speedArc: $('speedo-arc'),
+      boostBtn: document.querySelector('[data-touch="boost"]'),
       health: $('hud-health'),
       healthMeter: $('meter-health'),
       boost: $('hud-boost'),
@@ -50,31 +47,25 @@ export class UIManager {
     this.cache = {};
     this.resetCache();
     this.fpsVisible = false;
-    this.touchMode = 'auto';
     this.touchSeen = false;
     this.hudVisible = false;
     this.bannerState = { visible: false, progress: -1, sub: '' };
 
-    document.querySelectorAll('[data-action]').forEach(btn => {
-      btn.addEventListener('click', e => {
-        e.currentTarget.blur();
-        if (handlers.uiSound) handlers.uiSound('click');
-        const fn = handlers[btn.dataset.action];
-        if (fn) fn();
-      });
-    });
-    // Hover sounds via delegation: one listener instead of one per button.
-    document.addEventListener('pointerover', e => {
-      const btn = e.target.closest && e.target.closest('button');
-      if (btn && btn !== this.lastHover && handlers.uiSound) handlers.uiSound('hover');
-      this.lastHover = btn;
+    // One delegated listener for every [data-action] button, including ones rendered later.
+    document.addEventListener('click', e => {
+      const btn = e.target.closest && e.target.closest('[data-action]');
+      if (!btn || btn.disabled) return;
+      btn.blur();
+      if (handlers.uiSound) handlers.uiSound('click');
+      const fn = handlers[btn.dataset.action];
+      if (fn) fn(btn);
     });
   }
 
   resetCache() {
     const c = this.cache;
     c.score = c.best = c.speed = c.distance = c.mult = c.multBar = c.comboTime = c.health = c.boost = -1;
-    c.boosting = c.lowHealth = c.boostReady = c.slipstream = null;
+    c.boosting = c.lowHealth = c.boostReady = c.slipstream = c.boostFull = null;
   }
 
   format(n) {
@@ -85,11 +76,12 @@ export class UIManager {
 
   showScreen(name) {
     for (const key in this.screens) this.screens[key].classList.toggle('active', key === name);
-    const menuScreens = name && !['pause', 'results'].includes(name);
-    this.el.topbar.classList.toggle('visible', Boolean(menuScreens));
+    // Sub-screens have their own header bar; the profile/credits bar belongs to home.
+    this.el.topbar.classList.toggle('visible', name === 'menu');
+    this.currentScreen = name;
     if (!name) return;
     const primary = this.screens[name].querySelector('.btn-primary');
-    if (primary && !this.isTouchDevice()) primary.focus({ preventScroll: true });
+    if (primary && document.body.classList.contains('pad-active')) primary.focus({ preventScroll: true });
   }
 
   setHudVisible(visible, intro = false) {
@@ -100,11 +92,6 @@ export class UIManager {
     this.updateTouchVisibility();
     if (visible) this.resetCache();
     if (!visible) this.hideBanner();
-  }
-
-  setTouchMode(mode) {
-    this.touchMode = mode;
-    this.updateTouchVisibility();
   }
 
   // Touch devices: a coarse primary pointer, touch points without a fine pointer, or an
@@ -120,12 +107,11 @@ export class UIManager {
     this.updateTouchVisibility();
   }
 
+  // Touch controls are the game's controls: always shown in a race (CSS hides them only while a
+  // gamepad is the active input).
   updateTouchVisibility() {
-    const padActive = document.body.classList.contains('pad-active');
-    const show = this.hudVisible && (this.touchMode === 'on' || (this.touchMode === 'auto' && this.isTouchDevice() && !padActive));
-    this.el.touch.classList.toggle('enabled', show);
+    this.el.touch.classList.toggle('enabled', this.hudVisible);
     document.body.classList.toggle('touch-device', this.isTouchDevice());
-    document.body.classList.toggle('touch-active', show);
   }
 
   setTopbar(p) {
@@ -155,8 +141,6 @@ export class UIManager {
     if (speed !== c.speed) {
       c.speed = speed;
       el.speed.textContent = speed;
-      const ratio = Math.min(1, speed / SPEEDO_MAX_KMH);
-      el.speedArc.setAttribute('stroke-dasharray', `${(SPEEDO_ARC * ratio).toFixed(1)} ${SPEEDO_CIRC}`);
     }
     const distance = Math.floor(d.distance / 10);
     if (distance !== c.distance) {
@@ -201,6 +185,13 @@ export class UIManager {
     if (d.boostReady !== c.boostReady) {
       c.boostReady = d.boostReady;
       el.boostMeter.classList.toggle('empty', !d.boostReady);
+      el.boostBtn.classList.toggle('empty', !d.boostReady);
+    }
+    const full = d.boost >= 99;
+    if (full !== c.boostFull) {
+      c.boostFull = full;
+      el.boostMeter.classList.toggle('full', full);
+      el.boostBtn.classList.toggle('ready', full);
     }
     if (d.lowHealth !== c.lowHealth) {
       c.lowHealth = d.lowHealth;
@@ -268,11 +259,9 @@ export class UIManager {
     this.el.banner.classList.remove('visible');
   }
 
-  showRaceIntro(showControls, tip) {
-    this.$('intro-keys').classList.toggle('hidden', !showControls);
-    this.$('intro-pad').classList.toggle('hidden', !showControls);
+  showRaceIntro(tip) {
     this.$('intro-tip').textContent = tip;
-    this.$('race-intro').classList.add('visible');
+    this.$('race-intro').classList.toggle('visible', Boolean(tip));
   }
 
   hideRaceIntro() {
@@ -353,23 +342,25 @@ export class UIManager {
     }
   }
 
+  // Concise mobile results: score, record, one stats line, rewards, up to three events, and
+  // PLAY AGAIN as the big button. The upgrade button lights up when an upgrade is affordable.
   showResults(r) {
     const $ = this.$;
     $('share-fallback').hidden = true;
-    $('results-title').textContent = r.title;
+    const title = $('results-title');
+    title.textContent = r.title;
+    title.classList.toggle('ok', !r.wrecked);
     $('res-score').textContent = this.format(r.score);
     $('res-newbest').classList.toggle('visible', r.newBest);
-    $('res-stats').innerHTML = r.stats.map(([label, value, record]) =>
-      `<div class="${record ? 'record' : ''}"><span class="hud-label">${escapeHtml(label)}</span><b>${escapeHtml(value)}</b>${record ? '<em>NEW RECORD</em>' : ''}</div>`).join('');
+    $('res-line').textContent = r.line;
     $('res-credits').textContent = `+${this.format(r.creditsTotal)}`;
-    $('res-credit-list').innerHTML = r.credits.map(([label, v]) => `<li><span>${escapeHtml(label)}</span><b>+${this.format(v)}</b></li>`).join('');
     $('res-xp').textContent = `+${this.format(r.xp)}`;
     $('res-level').textContent = r.level.level;
-    $('res-levelup').textContent = r.levelsGained.length ? `LEVEL UP! You are now level ${r.level.level} — ${r.level.title}` : r.level.title;
+    $('res-levelup').textContent = r.levelsGained.length ? `LEVEL UP · ${r.level.title}` : '';
     $('res-levelup').classList.toggle('active', r.levelsGained.length > 0);
-    $('res-events').innerHTML = r.events.slice(0, 4).map(([kind, text]) => `<li class="${kind}">${escapeHtml(text)}</li>`).join('');
-    $('res-next').innerHTML = r.next.map(n => `<li class="${n.hot ? 'hot' : ''}"><div><b>${escapeHtml(n.title)}</b><small>${escapeHtml(n.detail)}</small></div>
-      ${n.ratio >= 0 ? `<div class="xp-bar"><i style="transform:scaleX(${n.ratio})"></i></div>` : ''}</li>`).join('');
+    $('res-events').innerHTML = r.events.slice(0, 3).map(([kind, text]) => `<li class="${kind}">${escapeHtml(text)}</li>`).join('');
+    const up = $('res-upgrade');
+    up.innerHTML = r.upgradeReady ? 'Upgrade car<span class="badge">READY</span>' : 'Upgrade car';
     this.countUp($('res-score'), r.score);
     const bar = $('res-xp-bar');
     bar.style.transition = 'none';

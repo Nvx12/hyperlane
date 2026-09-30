@@ -117,17 +117,9 @@ export const BEAM = {
   FAR_WIDTH: 9,
 };
 
+// Render resolution, graphics tiers and frame pacing live in Performance.js.
 export const PERF = {
-  MAX_DPR: 1.5,
-  MOBILE_MAX_DPR: 1.25,
-  // Canvas pixel budget (~1080p). Fill rate, not JS, is the limit on integrated GPUs: a
-  // 1920x1080 view at DPR 2 measured 40 fps uncapped vs 60 fps within this budget.
-  MAX_PIXELS: 1920 * 1080 * 1.15,
-  MIN_RENDER_SCALE: 0.75,
   MAX_DT: 1 / 20,
-  SLOW_FRAME_MS: 21,
-  SLOW_FRAME_GRACE: 3,
-  RECOVER_GRACE: 10,
   HUD_INTERVAL: 1 / 15,
   MAX_PARTICLES: 520,
   MAX_TEXTS: 14,

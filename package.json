@@ -1,7 +1,7 @@
 {
   "name": "night-vector",
-  "version": "1.0.0",
-  "description": "Night Vector — a neon arcade highway racer for the browser, with a small Node backend for leaderboards.",
+  "version": "1.1.0",
+  "description": "Night Vector — a mobile-first neon arcade highway racer (PWA), with a small Node backend for leaderboards.",
   "private": true,
   "type": "module",
   "license": "UNLICENSED",

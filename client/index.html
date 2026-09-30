@@ -5,15 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#06030d">
   <meta name="color-scheme" content="dark">
+  <meta name="format-detection" content="telephone=no">
   <title>Night Vector — Neon Highway Racer</title>
-  <meta name="description" content="Night Vector is a neon arcade highway racer. Thread the traffic, chain near misses, outrun the police and climb the leaderboards. Free to play in your browser — no download needed.">
+  <meta name="description" content="Night Vector is a neon arcade highway racer for your phone. Thread the traffic, chain near misses, outrun the police and climb the leaderboards. Free — play instantly or install it like an app.">
   <link rel="canonical" href="__PUBLIC_URL__/">
 
   <!-- Social previews -->
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Night Vector">
   <meta property="og:title" content="Night Vector — Neon Highway Racer">
-  <meta property="og:description" content="Thread the traffic. Own the night. A neon arcade racer you can play instantly in your browser.">
+  <meta property="og:description" content="Thread the traffic. Own the night. A neon arcade racer for your phone — play instantly, no download.">
   <meta property="og:url" content="__PUBLIC_URL__/">
   <meta property="og:image" content="__PUBLIC_URL__/og-image.jpg">
   <meta property="og:image:width" content="1200">
@@ -21,14 +22,14 @@
   <meta property="og:image:alt" content="Night Vector — a sports car racing down a neon-lit night highway">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Night Vector — Neon Highway Racer">
-  <meta name="twitter:description" content="Thread the traffic. Own the night. Play instantly in your browser.">
+  <meta name="twitter:description" content="Thread the traffic. Own the night. A neon arcade racer for your phone.">
   <meta name="twitter:image" content="__PUBLIC_URL__/og-image.jpg">
   <!-- Structured data (a data block — not executed, so the strict CSP doesn't apply) -->
   <script type="application/ld+json">
     {"@context":"https://schema.org","@type":"VideoGame","name":"Night Vector","url":"__PUBLIC_URL__/",
-     "description":"A neon arcade highway racer: thread the traffic, chain near misses, outrun the police and climb the leaderboards.",
-     "image":"__PUBLIC_URL__/og-image.jpg","genre":["Racing","Arcade"],"gamePlatform":["Web browser","PWA"],
-     "applicationCategory":"Game","operatingSystem":"Any","playMode":"SinglePlayer",
+     "description":"A neon arcade highway racer for phones: thread the traffic, chain near misses, outrun the police and climb the leaderboards.",
+     "image":"__PUBLIC_URL__/og-image.jpg","genre":["Racing","Arcade"],"gamePlatform":["Mobile web browser","PWA"],
+     "applicationCategory":"Game","operatingSystem":"Android, iOS","playMode":"SinglePlayer",
      "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
   </script>
 
@@ -56,37 +57,28 @@
   <div id="app">
     <canvas id="game" aria-label="Night Vector game view"></canvas>
 
-    <!-- ============================================================ HUD -->
+    <!-- ============================================================ HUD (landscape phone)
+         top-left score + hull · top-center combo/events · top-right speed + pause ·
+         bottom-center boost. The corners below belong to the thumbs. -->
     <div id="hud" class="hud hidden" aria-hidden="true">
-      <div class="hud-panel hud-score">
-        <span class="hud-label">Score</span>
+      <div class="hud-tl">
         <span class="hud-value" id="hud-score">0</span>
-        <span class="hud-sub"><span id="hud-distance">0.00</span> km · Best <b id="hud-best">0</b></span>
+        <span class="hud-sub">BEST <b id="hud-best">0</b><span class="hud-dist"> · <span id="hud-distance">0.00</span> KM</span></span>
+        <div class="hull" id="meter-health"><i id="hud-health"></i></div>
       </div>
 
       <div class="hud-mult" id="hud-mult-block" data-tier="0">
-        <span class="hud-label">Combo</span>
         <span class="mult-value" id="hud-mult">x1</span>
         <div class="mult-bar"><i id="hud-mult-bar"></i></div>
         <div class="combo-timer"><i id="hud-combo-timer"></i></div>
         <span class="slip-chip" id="hud-slipstream">Slipstream</span>
       </div>
 
-      <div class="hud-right">
-        <div class="hud-buttons">
-          <button class="icon-btn" data-action="pause" aria-label="Pause">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
-          </button>
-          <button class="icon-btn fs-btn" data-action="fullscreen" aria-label="Enter fullscreen">
-            <svg class="icon-expand" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            <svg class="icon-shrink" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          </button>
-          <button class="icon-btn mute-btn" data-action="mute" aria-label="Mute sound">
-            <svg class="icon-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            <svg class="icon-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9l6 6M22 9l-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          </button>
-        </div>
-        <div class="mission-tracker" id="mission-tracker"></div>
+      <div class="hud-tr">
+        <div class="speed" id="speedo"><span id="hud-speed">0</span><small>KM/H</small></div>
+        <button class="hud-pause" data-action="pause" aria-label="Pause">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
+        </button>
       </div>
 
       <div class="event-banner" id="event-banner">
@@ -96,63 +88,54 @@
         <div class="event-bar"><i id="event-bar"></i></div>
       </div>
 
-      <div class="hud-meters">
-        <div class="meter" id="meter-health">
-          <div class="meter-head"><span class="hud-label">Hull</span></div>
-          <div class="bar"><i id="hud-health"></i></div>
-        </div>
-        <div class="meter meter-boost" id="meter-boost">
-          <div class="meter-head"><span class="hud-label">Boost</span><kbd>Space</kbd></div>
-          <div class="bar"><i id="hud-boost"></i></div>
-        </div>
+      <div class="boost-meter" id="meter-boost">
+        <span class="boost-label">BOOST</span>
+        <div class="bar"><i id="hud-boost"></i></div>
       </div>
-
-      <div class="speedo" id="speedo">
-        <svg viewBox="0 0 200 200" aria-hidden="true">
-          <defs>
-            <linearGradient id="speedo-grad" x1="0" y1="1" x2="1" y2="0">
-              <stop offset="0" stop-color="#22e6ff"/>
-              <stop offset="0.6" stop-color="#b36bff"/>
-              <stop offset="1" stop-color="#ff2d95"/>
-            </linearGradient>
-          </defs>
-          <circle class="speedo-track" cx="100" cy="100" r="84" transform="rotate(135 100 100)"/>
-          <circle class="speedo-arc" id="speedo-arc" cx="100" cy="100" r="84" transform="rotate(135 100 100)" stroke-dasharray="0 527.79"/>
-          <circle class="speedo-ticks" cx="100" cy="100" r="70" transform="rotate(135 100 100)"/>
-        </svg>
-        <div class="speedo-readout">
-          <span id="hud-speed">0</span>
-          <small>KM/H</small>
-        </div>
-      </div>
+      <div class="mission-tracker" id="mission-tracker" hidden></div>
     </div>
 
     <div id="hit-left" class="hit-edge left" aria-hidden="true"></div>
     <div id="hit-right" class="hit-edge right" aria-hidden="true"></div>
     <div id="callout" class="callout" aria-live="polite"></div>
 
-    <!-- Race intro: controls for new players + one gameplay tip, shown during the countdown -->
+    <!-- One gameplay tip during the countdown (the first race gets the interactive tutorial) -->
     <div id="race-intro" class="race-intro" aria-live="polite">
-      <div class="intro-keys" id="intro-keys">
-        <span><kbd>A</kbd><kbd>D</kbd> Steer</span>
-        <span><kbd>W</kbd> Accelerate</span>
-        <span><kbd>S</kbd> Brake</span>
-        <span><kbd class="wide">Space</kbd> Boost</span>
-        <span><kbd>Esc</kbd> Pause</span>
-      </div>
-      <div class="intro-keys touch-only" id="intro-touch">
-        <span>◀ ▶ Steer</span><span>Auto-accelerate</span><span>BRAKE</span><span>BOOST</span>
-      </div>
-      <div class="intro-keys pad-only" id="intro-pad">
-        <span><kbd class="wide">L-Stick</kbd> Steer</span>
-        <span><kbd>RT</kbd> Accelerate</span>
-        <span><kbd>LT</kbd> Brake</span>
-        <span><kbd>A</kbd> Boost</span>
-        <span><kbd class="wide">Start</kbd> Pause</span>
-      </div>
       <p class="intro-tip" id="intro-tip"></p>
     </div>
     <div id="toasts" class="toasts" aria-live="polite"></div>
+
+    <!-- ============================================================ TOUCH CONTROLS -->
+    <div id="touch-controls" class="touch-controls">
+      <!-- Left thumb: hold the left or right half; slide across to switch -->
+      <div class="steer-zone" data-steer-zone role="group" aria-label="Steering: hold left or right">
+        <span class="steer-glyph left" data-steer-glyph="left" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M15 4l-8 8 8 8" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="steer-glyph right" data-steer-glyph="right" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="tilt-hint" aria-hidden="true">TILT TO STEER</span>
+      </div>
+      <!-- Right thumb -->
+      <div class="action-pad">
+        <button class="touch-btn touch-brake" data-touch="brake" aria-label="Brake">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="3"/></svg>
+          <span>BRAKE</span>
+        </button>
+        <button class="touch-btn touch-boost" data-touch="boost" aria-label="Boost">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6l7 6-7 6zM12 6l7 6-7 6z"/></svg>
+          <span>BOOST</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- First-race tutorial: one instruction at a time, taught while driving -->
+    <div id="coach" class="coach" hidden>
+      <p class="coach-text" id="coach-text"></p>
+      <div class="coach-steps" id="coach-steps"></div>
+      <button class="coach-skip" data-action="skipTutorial">Skip</button>
+    </div>
 
     <!-- Shown only between races when a new version has been downloaded -->
     <div id="update-banner" class="update-banner" role="status" hidden>
@@ -160,113 +143,110 @@
       <button class="btn btn-primary" data-action="update">Update</button>
     </div>
 
-    <!-- Phones held upright mid-race: the road needs a wide screen -->
+    <!-- Races are landscape-only: a portrait phone gets this instead of a squeezed road -->
     <div id="rotate-overlay" class="rotate-overlay" role="alert">
-      <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="20" y="8" width="24" height="42" rx="4" fill="none" stroke="currentColor" stroke-width="3"/><path d="M10 40a24 24 0 0 0 20 16M54 24A24 24 0 0 0 34 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
-      <b>Rotate your device</b>
-      <small>Night Vector plays in landscape. Your race is paused.</small>
-    </div>
-
-    <!-- Touch controls (shown on touch devices, or when forced in settings) -->
-    <div id="touch-controls" class="touch-controls">
-      <div class="touch-group">
-        <button class="touch-btn" data-touch="left" aria-label="Steer left">
-          <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <button class="touch-btn" data-touch="right" aria-label="Steer right">
-          <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-      </div>
-      <div class="touch-group">
-        <button class="touch-btn touch-brake" data-touch="brake" aria-label="Brake">BRAKE</button>
-        <button class="touch-btn touch-boost" data-touch="boost" aria-label="Boost">BOOST</button>
-      </div>
+      <div class="rotate-phone" aria-hidden="true"><i></i></div>
+      <b>Rotate your phone</b>
+      <small>Turn it sideways to race. Your race is paused.</small>
     </div>
 
     <!-- ============================================================ MENU SHELL -->
     <header id="menu-topbar" class="menu-topbar visible">
-      <div class="brand">NIGHT<span>VECTOR</span></div>
-      <div class="driver">
-        <div class="level-badge" id="top-level">1</div>
-        <div class="driver-info">
+      <button class="driver" data-nav="profile" aria-label="Profile, records and achievements">
+        <span class="level-badge" id="top-level">1</span>
+        <span class="driver-info">
           <span class="driver-title" id="top-title">ROOKIE</span>
-          <div class="xp-bar"><i id="top-xp"></i></div>
-          <span class="xp-text" id="top-xp-text">0 / 350 XP</span>
-        </div>
-      </div>
-      <div class="credits"><span class="credit-icon">◈</span><b id="top-credits">0</b><small>CR</small></div>
-      <span class="net-chip" id="net-status" hidden>Offline</span>
-      <button class="btn-small install-btn" data-action="install" id="install-btn" hidden>Install</button>
-      <button class="icon-btn fs-btn" data-action="fullscreen" aria-label="Enter fullscreen">
-        <svg class="icon-expand" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        <svg class="icon-shrink" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span class="xp-bar"><i id="top-xp"></i></span>
+          <span class="xp-text" id="top-xp-text">0 / 450 XP</span>
+        </span>
       </button>
-      <button class="icon-btn mute-btn" data-action="mute" aria-label="Mute sound">
-        <svg class="icon-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        <svg class="icon-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9l6 6M22 9l-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span class="net-chip" id="net-status" hidden>Offline</span>
+      <button class="chip-btn install-btn" data-action="install" id="install-btn" hidden>Install</button>
+      <div class="credits"><span class="credit-icon">◈</span><b id="top-credits">0</b></div>
+      <button class="icon-btn fs-btn" data-action="fullscreen" aria-label="Fullscreen">
+        <svg class="icon-expand" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        <svg class="icon-shrink" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
       </button>
     </header>
 
-    <!-- Home -->
+    <!-- Home: logo → PLAY. Works in portrait and landscape. -->
     <section id="screen-menu" class="screen menu-home active" aria-label="Main menu">
-      <nav class="main-nav" aria-label="Main navigation">
-        <button class="nav-btn nav-play btn-primary" data-nav="play"><span>Play</span><small>Hit the highway</small></button>
-        <button class="nav-btn" data-nav="garage"><span>Garage</span><small id="nav-garage-sub">Cars &amp; upgrades</small></button>
-        <button class="nav-btn" data-nav="missions"><span>Missions</span><small id="nav-missions-sub">Daily &amp; objectives</small></button>
-        <button class="nav-btn" data-nav="leaderboard"><span>Leaderboard</span><small>Global rankings</small></button>
-        <button class="nav-btn" data-nav="profile"><span>Profile</span><small id="nav-profile-sub">Records &amp; achievements</small></button>
-        <button class="nav-btn" data-nav="settings"><span>Settings</span><small>Audio, graphics, controls</small></button>
-      </nav>
-      <div class="home-hero">
-        <p class="eyebrow">Thread the traffic. Own the night.</p>
-        <h1 class="title logo"><span class="logo-top">NIGHT</span><span class="logo-main">VECTOR</span></h1>
-        <div class="home-car">
-          <span class="hud-label">Current ride</span>
-          <b id="home-car-name">Vireo Hatch</b>
-          <small id="home-car-class">Starter hatchback</small>
-        </div>
-        <div class="home-challenge" id="home-challenge" hidden></div>
-        <div class="home-daily" id="home-daily"></div>
+      <div class="home-brand">
+        <h1 class="logo"><span class="logo-top">NIGHT</span><span class="logo-main">VECTOR</span></h1>
+        <p class="home-car"><span class="hud-label">Your ride</span><b id="home-car-name">Vireo Hatch</b><small id="home-car-class">Starter hatchback</small></p>
       </div>
-      <p class="menu-hint"><kbd>Enter</kbd> Play · <kbd>G</kbd> Garage · <kbd>Esc</kbd> Back</p>
-      <p class="menu-hint menu-hint-pad"><kbd>A</kbd> Select · <kbd>B</kbd> Back · <kbd class="wide">Start</kbd> Pause</p>
+      <div class="home-actions">
+        <button class="play-btn" data-action="play">
+          <span>PLAY</span>
+          <small><span id="home-route">Neon City</span></small>
+        </button>
+        <nav class="home-tiles" aria-label="Main menu">
+          <button class="tile" data-nav="garage">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15l2-6c.3-.9 1-1.5 2-1.5h10c1 0 1.7.6 2 1.5l2 6v3a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1v-1H6.5v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z M6 12.5h12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7" cy="14.5" r="1.2"/><circle cx="17" cy="14.5" r="1.2"/></svg>
+            <span>Garage</span><small id="nav-garage-sub"></small>
+          </button>
+          <button class="tile" data-nav="missions">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v17M5 5h11l-2 3.5 2 3.5H5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>
+            <span>Missions</span><small id="nav-missions-sub"></small>
+          </button>
+          <button class="tile" data-nav="leaderboard">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V13h4v7M10 20V8h4v12M16 20v-9h4v9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+            <span>Leaderboard</span><small>Global</small>
+          </button>
+          <button class="tile" data-nav="settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7zM12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4 5.3 5.3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span>Settings</span><small>Controls</small>
+          </button>
+        </nav>
+        <button class="daily-strip" id="home-daily" data-nav="missions"></button>
+      </div>
+      <div class="home-challenge" id="home-challenge" hidden></div>
     </section>
 
-    <!-- Play: environment select -->
+    <!-- Route select (from the PLAY button's route line) -->
     <section id="screen-play" class="screen panel-screen" aria-label="Choose route">
       <div class="panel">
-        <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Choose your route</h2></div>
-        <div class="env-grid" id="env-grid"></div>
-        <div class="panel-foot">
+        <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Route</h2></div>
+        <div class="panel-body">
+          <div class="env-grid" id="env-grid"></div>
           <label class="toggle"><input type="checkbox" id="tour-toggle"><span>World tour — the route changes every few km</span></label>
-          <button class="btn btn-primary" data-action="start">Start Race</button>
         </div>
+        <div class="panel-foot"><button class="btn btn-primary btn-block" data-action="start">Race</button></div>
       </div>
     </section>
 
-    <!-- Garage -->
-    <section id="screen-garage" class="screen panel-screen" aria-label="Garage">
+    <!-- Garage: the car is the star; swipe or use the arrows to browse -->
+    <section id="screen-garage" class="screen panel-screen garage-screen" aria-label="Garage">
       <div class="panel garage">
-        <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Garage</h2></div>
+        <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Garage</h2>
+          <span class="credits small"><span class="credit-icon">◈</span><b id="garage-credits">0</b></span></div>
         <div class="garage-body">
-          <div class="car-list" id="car-list"></div>
-          <div class="car-stage">
+          <div class="car-stage" id="car-stage">
+            <button class="stage-nav prev" data-car-step="-1" aria-label="Previous car">‹</button>
             <canvas id="garage-canvas" width="520" height="300" aria-hidden="true"></canvas>
-            <div class="car-title">
-              <span class="hud-label" id="garage-class">Class</span>
-              <h3 id="garage-name">Car</h3>
-              <p id="garage-blurb"></p>
-            </div>
+            <button class="stage-nav next" data-car-step="1" aria-label="Next car">›</button>
+            <div class="car-dots" id="car-dots"></div>
+          </div>
+          <div class="car-info">
+            <span class="hud-label" id="garage-class">Class</span>
+            <h3 id="garage-name">Car</h3>
+            <p class="car-role" id="garage-role"></p>
+            <div class="stat-bars" id="garage-stats"></div>
             <div class="car-action" id="garage-action"></div>
           </div>
-          <div class="car-side">
+        </div>
+      </div>
+      <div class="sheet" id="upgrade-sheet" hidden>
+        <div class="sheet-panel" role="dialog" aria-label="Upgrades and style">
+          <div class="sheet-head">
             <div class="tabs" role="tablist">
-              <button class="tab active" data-gtab="stats" role="tab">Performance</button>
-              <button class="tab" data-gtab="upgrades" role="tab">Upgrades</button>
+              <button class="tab active" data-gtab="upgrades" role="tab">Upgrades</button>
               <button class="tab" data-gtab="style" role="tab">Style</button>
             </div>
-            <div class="tab-body" id="garage-tab"></div>
+            <span class="credits small"><span class="credit-icon">◈</span><b id="sheet-credits">0</b></span>
+            <button class="sheet-close" data-sheet-close aria-label="Close">✕</button>
           </div>
+          <div class="sheet-body" id="garage-tab"></div>
         </div>
       </div>
     </section>
@@ -275,42 +255,42 @@
     <section id="screen-missions" class="screen panel-screen" aria-label="Missions">
       <div class="panel">
         <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Missions</h2></div>
-        <div class="missions-body" id="missions-body"></div>
+        <div class="panel-body missions-body" id="missions-body"></div>
       </div>
     </section>
 
     <!-- Leaderboard -->
     <section id="screen-leaderboard" class="screen panel-screen" aria-label="Leaderboard">
       <div class="panel">
-        <div class="panel-head">
-          <button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Leaderboard</h2>
+        <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Leaderboard</h2></div>
+        <div class="lb-filters">
           <div class="seg lb-periods" role="tablist" aria-label="Period">
             <button data-lb-period="day" role="tab">Today</button>
-            <button data-lb-period="week" role="tab" class="active">This week</button>
+            <button data-lb-period="week" role="tab" class="active">Week</button>
             <button data-lb-period="all" role="tab">All time</button>
           </div>
+          <div class="seg lb-cats" role="tablist" aria-label="Category">
+            <button class="active" data-lb-cat="score" role="tab">Score</button>
+            <button data-lb-cat="distance" role="tab">Distance</button>
+            <button data-lb-cat="speed" role="tab">Speed</button>
+            <button data-lb-cat="combo" role="tab">Combo</button>
+          </div>
         </div>
-        <div class="tabs lb-cats" role="tablist" aria-label="Category">
-          <button class="tab active" data-lb-cat="score" role="tab">Top score</button>
-          <button class="tab" data-lb-cat="distance" role="tab">Longest run</button>
-          <button class="tab" data-lb-cat="speed" role="tab">Top speed</button>
-          <button class="tab" data-lb-cat="combo" role="tab">Best combo</button>
-        </div>
-        <div class="lb-body" id="lb-body" aria-live="polite"></div>
+        <div class="panel-body lb-body" id="lb-body" aria-live="polite"></div>
       </div>
     </section>
 
-    <!-- Profile: online identity, records & statistics, achievements -->
+    <!-- Profile: online identity, records & statistics, achievements (from the level badge) -->
     <section id="screen-profile" class="screen panel-screen" aria-label="Profile">
       <div class="panel">
         <div class="panel-head">
           <button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Profile</h2>
-          <div class="tabs profile-tabs" role="tablist">
-            <button class="tab active" data-ptab="stats" role="tab">Records</button>
-            <button class="tab" data-ptab="achievements" role="tab">Achievements <span id="ach-count"></span></button>
+          <div class="seg profile-tabs" role="tablist">
+            <button class="active" data-ptab="stats" role="tab">Records</button>
+            <button data-ptab="achievements" role="tab">Awards <span id="ach-count"></span></button>
           </div>
         </div>
-        <div class="stats-body" id="profile-body">
+        <div class="panel-body stats-body" id="profile-body">
           <div class="identity-card" id="identity-card"></div>
           <div id="stats-body"></div>
           <div class="ach-grid" id="ach-grid" hidden></div>
@@ -322,61 +302,55 @@
     <section id="screen-settings" class="screen panel-screen" aria-label="Settings">
       <div class="panel">
         <div class="panel-head"><button class="back-btn" data-nav="home" aria-label="Back">‹</button><h2>Settings</h2></div>
-        <div class="settings-body" id="settings-body"></div>
+        <div class="panel-body settings-body" id="settings-body"></div>
       </div>
     </section>
 
     <!-- Pause -->
-    <section id="screen-pause" class="screen" aria-label="Paused">
-      <div class="card small-card">
+    <section id="screen-pause" class="screen pause-screen" aria-label="Paused">
+      <div class="pause-card">
         <h2 class="screen-title">Paused</h2>
-        <div class="pause-missions" id="pause-missions"></div>
         <div class="btn-stack">
-          <button class="btn btn-primary" data-action="resume">Resume</button>
-          <button class="btn btn-ghost" data-action="restart">Restart</button>
-          <button class="btn btn-ghost" data-action="menu">Main Menu</button>
+          <button class="btn btn-primary btn-xl" data-action="resume">Resume</button>
+          <div class="btn-pair">
+            <button class="btn btn-ghost" data-action="restart">Restart</button>
+            <button class="btn btn-ghost" data-action="menu">Menu</button>
+          </div>
         </div>
+        <div class="pause-missions" id="pause-missions"></div>
       </div>
     </section>
 
-    <!-- Results -->
-    <section id="screen-results" class="screen" aria-label="Race results">
-      <div class="card results-card">
-        <h2 class="screen-title danger" id="results-title">Wrecked</h2>
-        <div class="results-grid">
-          <div class="results-main">
-            <span class="hud-label">Final score</span>
-            <div class="final-score" id="res-score">0</div>
-            <div class="new-best" id="res-newbest">New best score</div>
-            <div class="online-line" id="res-online" role="status" hidden></div>
-            <div class="result-stats" id="res-stats"></div>
-            <div class="next-up">
-              <span class="hud-label">Next up</span>
-              <ul id="res-next"></ul>
-            </div>
-          </div>
-          <div class="results-side">
-            <div class="reward-block">
-              <div class="reward-head"><span class="hud-label">Credits earned</span><b class="reward-total" id="res-credits">+0</b></div>
-              <ul class="reward-list" id="res-credit-list"></ul>
-            </div>
-            <div class="reward-block">
-              <div class="reward-head"><span class="hud-label">Driver XP</span><b class="reward-total xp" id="res-xp">+0</b></div>
-              <div class="xp-row"><span class="level-badge small" id="res-level">1</span><div class="xp-bar big"><i id="res-xp-bar"></i></div></div>
-              <p class="level-up" id="res-levelup"></p>
-            </div>
-            <ul class="result-events" id="res-events"></ul>
-          </div>
+    <!-- Results: one screen, PLAY AGAIN one tap away -->
+    <section id="screen-results" class="screen results-screen" aria-label="Race results">
+      <div class="results">
+        <div class="res-main">
+          <h2 class="res-title" id="results-title">Wrecked</h2>
+          <div class="final-score" id="res-score">0</div>
+          <div class="new-best" id="res-newbest">New record</div>
+          <p class="res-line" id="res-line"></p>
+          <div class="online-line" id="res-online" role="status" hidden></div>
         </div>
-        <div class="share-fallback" id="share-fallback" hidden>
-          <label for="share-link">Copy this link to challenge a friend</label>
-          <input type="text" id="share-link" readonly spellcheck="false">
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" data-action="restart">Race again</button>
-          <button class="btn btn-ghost" data-action="share">Share &amp; challenge</button>
-          <button class="btn btn-ghost" data-action="garage">Garage</button>
-          <button class="btn btn-ghost" data-action="menu">Main Menu</button>
+        <div class="res-side">
+          <div class="rewards">
+            <div class="reward"><b class="reward-total" id="res-credits">+0</b><span>Credits</span></div>
+            <div class="reward"><b class="reward-total xp" id="res-xp">+0</b><span>XP</span></div>
+          </div>
+          <div class="xp-row"><span class="level-badge small" id="res-level">1</span><div class="xp-bar big"><i id="res-xp-bar"></i></div></div>
+          <p class="level-up" id="res-levelup"></p>
+          <ul class="result-events" id="res-events"></ul>
+          <div class="res-actions">
+            <button class="btn btn-primary btn-xl" data-action="restart">Play again</button>
+            <div class="btn-pair">
+              <button class="btn btn-ghost" data-action="upgradeCar" id="res-upgrade">Upgrade car</button>
+              <button class="btn btn-ghost" data-action="menu">Menu</button>
+            </div>
+            <button class="link-btn" data-action="share">Share &amp; challenge a friend</button>
+          </div>
+          <div class="share-fallback" id="share-fallback" hidden>
+            <label for="share-link">Copy this link to challenge a friend</label>
+            <input type="text" id="share-link" readonly spellcheck="false">
+          </div>
         </div>
       </div>
     </section>

@@ -22,7 +22,7 @@ import { registerMenuScreens } from './MenuScreens.js';
 import { SaveManager } from './SaveManager.js';
 import { Progression } from './Progression.js';
 import { resolveCustom } from './data/cosmetics.js';
-import { tipFor, SHOW_CONTROLS_RACES } from './data/tips.js';
+import { tipFor } from './data/tips.js';
 import { ENV } from './env.js';
 import { AppShell } from './AppShell.js';
 import { ApiClient } from './net/ApiClient.js';
@@ -32,6 +32,10 @@ import { Ghost } from './Ghost.js';
 import { Analytics } from './net/Analytics.js';
 import { takeChallengeFromUrl, shareRun } from './Share.js';
 import { createSpriteBank, createPlayerSprites, createUnderglowSprite, createBeamSprite } from './Sprites.js';
+import { PerformanceManager } from './Performance.js';
+import { Haptics } from './Haptics.js';
+import { Tutorial } from './Tutorial.js';
+import { BackNav } from './BackNav.js';
 
 export const STATE = Object.freeze({
   MENU: 'menu',
@@ -42,15 +46,12 @@ export const STATE = Object.freeze({
   GAMEOVER: 'gameover',
 });
 
-// Graphics presets: cosmetic detail (particles, rain, backdrops) and resolution cap.
-// Gameplay is identical at every level.
-const QUALITY = {
-  low: { detail: 0.35, maxDpr: 1 },
-  medium: { detail: 0.65, maxDpr: 1.25 },
-  high: { detail: 1, maxDpr: PERF.MAX_DPR },
-};
-const AUTO_DETAIL_STEPS = [1, 0.6, 0.35];
 const GOAL_CHECK_INTERVAL = 0.5;
+const RESIZE_SETTLE_MS = 150; // rotation and address-bar animations fire many resizes; rebuild once
+// After a pause (or a phone call, or a rotation) the race resumes on a short 3-2-1 with the world
+// frozen, so nobody is dropped back into traffic at 250 km/h mid-thought.
+const RESUME_STEP = 0.6;
+const RESUME_STEPS = 3;
 const INTRO_LINGER = 2.5; // seconds the race intro stays up after GO
 const MIN_SETTLE_DISTANCE = 150; // abandoned runs shorter than this don't count
 
@@ -92,12 +93,20 @@ export class Game {
     this.weather = new Weather(this.audio);
     this.events = new EventDirector(this);
     this.input = new InputManager();
+    this.haptics = new Haptics();
+    this.tutorial = null; // set while the first-race tutorial runs
     this.ui = new UIManager({
       start: () => this.startRace(),
       resume: () => this.resume(),
       restart: () => this.restartRace(),
       menu: () => this.quitToMenu(),
       garage: () => this.enterMenu('garage'),
+      upgradeCar: () => {
+        this.enterMenu('garage');
+        this.menus.openSheet('upgrades');
+      },
+      play: () => this.play(),
+      skipTutorial: () => { if (this.tutorial) this.tutorial.skip(); },
       pause: () => this.togglePause(),
       mute: () => this.toggleMute(),
       fullscreen: () => this.shell.toggleFullscreen(),
@@ -149,8 +158,12 @@ export class Game {
     };
     this.input.isRacing = () => this.isRaceActive();
     this.input.onMethodChange = () => this.ui.updateTouchVisibility();
+    // Touch feedback: a brake press gets a light tick (boost has its own pulse on ignition).
+    this.input.onControlPress = kind => {
+      if (kind === 'brake') this.haptics.pulse('tap');
+    };
     this.input.onPadConnect = () => {
-      this.ui.toast('Controller connected', 'RT accelerate · LT brake · A boost', 'unlock');
+      this.ui.toast('Controller connected', 'Stick steer · LT brake · A boost', 'unlock');
       this.shell.emit('gamepad', { connected: true });
     };
     this.input.onPadDisconnect = () => {
@@ -179,25 +192,39 @@ export class Game {
     this.timeScale = 1;
     this.time = 0;
     this.renderScale = 1;
-    this.qualityCap = PERF.MAX_DPR;
-    this.autoDetailStep = 0;
-    this.frameAvg = 16.7;
-    this.slowTime = 0;
-    this.fastTime = 0;
+    this.perf = new PerformanceManager();
     this.fpsTimer = 0;
     this.fpsFrames = 0;
     this.lastTime = 0;
     this.resizePending = true;
+    this.resizeDue = 0;
     this.needsRender = true;
     this.selectedEnv = this.save.environment;
     this.tour = false;
     this.resetRunState();
 
+    this.backNav = new BackNav(() => this.handleBack());
+    this.immersiveTried = false;
+
     this.frame = this.frame.bind(this);
-    window.addEventListener('resize', () => { this.resizePending = true; });
+    const onResize = () => { this.resizeDue = performance.now() + RESIZE_SETTLE_MS; };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    // Backgrounding (app switch, phone lock, incoming call): pause the race and silence audio.
+    // rAF stops on its own while hidden, so nothing else keeps running.
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.pause();
-      else this.lastTime = performance.now();
+      if (document.hidden) {
+        this.pause();
+        this.audio.suspend();
+        this.store.save();
+      } else {
+        this.lastTime = performance.now();
+        if (this.state !== STATE.PAUSED) this.audio.resume();
+      }
+    });
+    window.addEventListener('pagehide', () => {
+      this.pause();
+      this.store.save();
     });
   }
 
@@ -216,6 +243,9 @@ export class Game {
     this.introTimer = 0;
     this.dustAcc = 0;
     this.rainLevel = -1;
+    this.resumeTimer = 0;
+    this.resumeStep = 0;
+    if (this.tutorial) this.tutorial.abort();
   }
 
   get save() {
@@ -252,20 +282,19 @@ export class Game {
   // Applies persisted settings to every subsystem. Cheap; called when any setting changes.
   applySettings() {
     const st = this.save.settings;
-    const q = QUALITY[st.quality] || QUALITY.high;
-    const detail = Math.min(q.detail, AUTO_DETAIL_STEPS[this.autoDetailStep]);
-    this.effects.setDetail(detail);
-    this.weather.detail = detail;
-    this.environment.setDetail(detail >= 0.6 ? 1 : 0.5);
+    this.perf.configure(st);
+    const q = this.perf.preset;
+    this.effects.setDetail(q.detail, q.particles);
+    this.weather.detail = q.detail;
+    this.environment.setDetail(q.detail >= 0.6 ? 1 : 0.5);
     this.camera.shakeScale = st.shake;
     this.audio.applySettings(st);
-    this.ui.setTouchMode(st.touch);
-    // Phones: small screens with DPR 3 are fill-rate bound; 1.25x is visually indistinguishable.
-    const cap = this.ui.isTouchDevice() ? Math.min(q.maxDpr, PERF.MOBILE_MAX_DPR) : q.maxDpr;
-    if (cap !== this.qualityCap) {
-      this.qualityCap = cap;
-      this.resizePending = true;
-    }
+    this.input.configure(st);
+    this.haptics.setEnabled(st.haptics);
+    // Render resolution follows the tier (DPR cap + pixel budget); resize only when it changes.
+    const w = Math.max(320, window.innerWidth);
+    const h = Math.max(240, window.innerHeight);
+    if (Math.abs(this.perf.renderScale(w, h, window.devicePixelRatio) - this.renderScale) > 0.01) this.resizePending = true;
   }
 
   // ---------------------------------------------------------------- lifecycle
@@ -292,12 +321,19 @@ export class Game {
 
   frame(now) {
     requestAnimationFrame(this.frame);
+    // Frame pacing: 60 fps cap on 90/120 Hz screens, 30 fps mode, 30 fps behind menus.
+    if (!this.perf.shouldProcess(now, this.state === STATE.MENU)) return;
     const raw = (now - this.lastTime) / 1000;
     this.lastTime = now;
     // Clamp spikes (tab switches, GC pauses) so the simulation never teleports.
     const dt = raw > PERF.MAX_DT ? PERF.MAX_DT : raw < 0 ? 0 : raw;
+    if (this.resizeDue && now >= this.resizeDue) {
+      this.resizeDue = 0;
+      this.resizePending = true;
+    }
     if (this.resizePending) this.applyResize();
-    this.monitorPerformance(raw);
+    this.backNav.sync(this.wantsBackGuard());
+    const workStart = performance.now();
     this.input.poll(dt);
 
     if (this.state === STATE.PAUSED) {
@@ -310,16 +346,15 @@ export class Game {
     this.update(dt);
     this.render();
     if (this.state === STATE.MENU) this.menus.renderPreview(dt);
+    this.monitorPerformance(raw, performance.now() - workStart);
   }
 
   applyResize() {
     this.resizePending = false;
     const w = Math.max(320, window.innerWidth);
     const h = Math.max(240, window.innerHeight);
-    // High-DPI screens are held to the pixel budget, but never below native (1x) resolution;
-    // sustained slowness beyond that is handled by monitorPerformance().
-    const budget = Math.max(1, Math.sqrt(PERF.MAX_PIXELS / (w * h)));
-    this.renderScale = Math.min(window.devicePixelRatio || 1, this.qualityCap, budget);
+    document.body.classList.toggle('portrait', h > w);
+    this.renderScale = this.perf.renderScale(w, h, window.devicePixelRatio);
     this.canvas.width = Math.round(w * this.renderScale);
     this.canvas.height = Math.round(h * this.renderScale);
     this.canvas.style.width = `${w}px`;
@@ -335,43 +370,16 @@ export class Game {
     this.needsRender = true;
   }
 
-  // Cosmetic auto-scaling: sustained frame drops first reduce effects detail, then render
-  // resolution. Gameplay (traffic, physics, difficulty) is never touched.
-  monitorPerformance(raw) {
-    if (raw <= 0 || raw > 0.25) return;
-    this.frameAvg += (raw * 1000 - this.frameAvg) * 0.05;
-    if (this.state === STATE.PLAYING && this.frameAvg > PERF.SLOW_FRAME_MS) {
-      this.slowTime += raw;
-      if (this.slowTime > PERF.SLOW_FRAME_GRACE) {
-        this.slowTime = 0;
-        this.frameAvg = 16.7;
-        if (this.autoDetailStep < AUTO_DETAIL_STEPS.length - 1) {
-          this.autoDetailStep++;
-          this.applySettings();
-        } else if (this.renderScale > PERF.MIN_RENDER_SCALE) {
-          this.qualityCap = Math.max(PERF.MIN_RENDER_SCALE, this.renderScale - 0.25);
-          this.resizePending = true;
-        }
-      }
-    } else {
-      this.slowTime = 0;
-    }
-    // Recover detail after a long stretch of comfortable frame times.
-    if (this.autoDetailStep > 0 && this.frameAvg < PERF.SLOW_FRAME_MS * 0.6) {
-      this.fastTime += raw;
-      if (this.fastTime > PERF.RECOVER_GRACE) {
-        this.fastTime = 0;
-        this.autoDetailStep--;
-        this.applySettings();
-      }
-    } else {
-      this.fastTime = 0;
-    }
+  // Adaptive quality (Performance.js): sustained slow frames step cosmetics / resolution / frame
+  // rate down; sustained headroom (AUTO) steps back up. Gameplay is never touched.
+  monitorPerformance(raw, workMs) {
+    if (this.perf.sample(raw * 1000, workMs, this.state === STATE.PLAYING)) this.applySettings();
     this.fpsFrames++;
     this.fpsTimer += raw;
     if (this.fpsTimer >= 0.5) {
       if (this.ui.fpsVisible) {
-        this.ui.setFps(`${Math.round(this.fpsFrames / this.fpsTimer)} FPS · ${this.frameAvg.toFixed(1)} ms · ${this.traffic.vehicles.length} vehicles · ${this.effects.particles.count} particles · x${this.renderScale.toFixed(2)} · detail ${AUTO_DETAIL_STEPS[this.autoDetailStep]}`);
+        const p = this.perf;
+        this.ui.setFps(`${Math.round(this.fpsFrames / this.fpsTimer)} FPS · ${p.frameAvg.toFixed(1)} ms · work ${p.workAvg.toFixed(1)} ms · ${p.mode}:${p.levelName}${p.extra ? '+' : ''} → ${p.targetFps} · ${this.traffic.vehicles.length} cars · ${this.effects.particles.count} fx · x${this.renderScale.toFixed(2)}`);
       }
       this.fpsFrames = 0;
       this.fpsTimer = 0;
@@ -419,6 +427,7 @@ export class Game {
   startRace() {
     this.audio.unlock();
     this.audio.resume();
+    this.prepareTilt();
     this.resetWorld();
     this.environment.start(this.selectedEnv, this.tour, true);
     this.weather.start(this.environment.env, true);
@@ -431,8 +440,9 @@ export class Game {
     this.ui.setMissionTracker(this.goals.trackerItems(null));
     this.ui.peekMissions(true);
     const ch = this.challenge && this.challenge.accepted ? this.challenge : null;
-    this.ui.showRaceIntro(this.save.stats.races < SHOW_CONTROLS_RACES,
-      ch ? `Challenge: beat ${ch.name}'s ${ch.score.toLocaleString('en-US')}` : tipFor(this.save.stats.races));
+    // First race: the interactive tutorial starts at GO instead of a text tip.
+    this.ui.showRaceIntro(!this.save.flags.tutorial ? 'GET READY'
+      : ch ? `Challenge: beat ${ch.name}'s ${ch.score.toLocaleString('en-US')}` : tipFor(this.save.stats.races));
     this.audio.setMusicMode('race');
     this.shell.refreshUpdateBanner();
     this.shell.checkOrientation();
@@ -441,6 +451,27 @@ export class Game {
     this.ghost.startRun();
     this.analytics.track('race_start', { car: this.car.id, env: this.selectedEnv, tour: this.tour, ghost: Boolean(this.ghost.active) });
     this.lastTime = performance.now();
+  }
+
+  // Tilt steering: start the sensor from this user gesture (iOS permission) and centre it on
+  // however the player is holding the phone right now. Any failure falls back to touch.
+  prepareTilt() {
+    const input = this.input;
+    if (this.save.settings.steering !== 'tilt') return;
+    if (input.tilt.active) {
+      input.tilt.calibrate();
+      return;
+    }
+    input.enableTilt().then(result => {
+      if (result === 'ok') {
+        input.tilt.calibrate();
+        return;
+      }
+      this.save.settings.steering = 'touch';
+      this.store.save();
+      this.applySettings();
+      this.ui.toast('Tilt unavailable', result === 'denied' ? 'Motion access was denied — using touch steering' : 'No motion sensor — using touch steering', 'mission');
+    });
   }
 
   // Leaving a run from the pause menu still banks its progress (if it went anywhere).
@@ -528,6 +559,7 @@ export class Game {
 
   pause() {
     if (this.state !== STATE.PLAYING && this.state !== STATE.COUNTDOWN) return;
+    this.resumeTimer = 0;
     this.pausedFrom = this.state;
     this.state = STATE.PAUSED;
     this.input.reset();
@@ -539,15 +571,62 @@ export class Game {
 
   resume() {
     if (this.state !== STATE.PAUSED) return;
+    // Never resume into a portrait screen: the rotate prompt stays until the phone turns.
+    if (window.innerHeight > window.innerWidth) return;
     this.state = this.pausedFrom;
     this.audio.resume();
     this.ui.showScreen(null);
+    this.input.reset();
     this.lastTime = performance.now();
+    if (this.state === STATE.PLAYING) {
+      this.resumeTimer = RESUME_STEP * RESUME_STEPS;
+      this.resumeStep = 0;
+    }
+  }
+
+  // ---------------------------------------------------------------- mobile app flow
+
+  // PLAY from the home screen: straight into a race. On phones (not installed, where the browser
+  // allows it) the first PLAY also goes fullscreen and locks landscape — this tap is the user
+  // gesture the Fullscreen API requires. Failures are silent: the game works either way.
+  play() {
+    if (!this.immersiveTried && this.ui.isTouchDevice() && !this.shell.pwa.isStandalone) {
+      this.immersiveTried = true;
+      this.shell.enterImmersive();
+    }
+    this.startRace();
+  }
+
+  // Android back / iOS swipe-back: see BackNav.js.
+  wantsBackGuard() {
+    if (this.state === STATE.MENU) return this.menus.current !== 'home' || this.menus.sheetOpen;
+    return true;
+  }
+
+  handleBack() {
+    switch (this.state) {
+      case STATE.MENU:
+        if (this.menus.sheetOpen) this.menus.closeSheet();
+        else this.menus.back();
+        break;
+      case STATE.COUNTDOWN:
+      case STATE.PLAYING:
+        this.pause();
+        break;
+      case STATE.PAUSED:
+        this.resume();
+        break;
+      case STATE.GAMEOVER:
+        this.enterMenu();
+        break;
+      default:
+        break; // crashing: let the wreck play out
+    }
   }
 
   confirm() {
     if (this.state === STATE.MENU) {
-      if (this.menus.current === 'home') this.menus.open('play');
+      if (this.menus.current === 'home') this.play();
       else if (this.menus.current === 'play') this.startRace();
     } else if (this.state === STATE.PAUSED) {
       this.resume();
@@ -573,6 +652,7 @@ export class Game {
     this.traffic.spawnEnabled = false;
     this.camera.addTrauma(1);
     this.input.rumble(1, 450);
+    this.haptics.pulse('crash');
     this.camera.fovOverride = 0.12; // pull in on the wreck
     this.audio.crash(1.2);
     this.audio.siren(false);
@@ -588,6 +668,11 @@ export class Game {
     this.camera.fovOverride = 0;
     this.gameOverAt = performance.now();
     this.ui.setHudVisible(false);
+    // Remember the AUTO quality this device settled on (saved with the run below).
+    if (this.perf.changed && this.perf.learnedLevel >= 0) {
+      this.save.settings.autoLevel = this.perf.learnedLevel;
+      this.perf.changed = false;
+    }
     const summary = this.finishRun();
     this.ui.showResults(summary);
     this.ui.setOnlineResult(this.players.registered ? 'pending' : null);
@@ -667,26 +752,21 @@ export class Game {
     this.store.save();
     this.trackRunEnd(run, goals.events, levelsGained.length ? after.level : 0);
 
-    const km = v => `${(v / 1000).toFixed(2)} KM`;
     const isRecord = key => beaten.includes(key);
     if (levelsGained.length) this.audio.levelUp();
     else if (isRecord('score')) this.audio.record();
+    const wrecked = this.player.health <= 0;
+    const up = this.progression.nextUpgrade();
+    // One "why play again" line when there's room (upgrades have their own lit-up button).
+    const hint = this.nextGoal(run, isRecord('score'));
+    if (hint && events.length < 3) events.push(['mission', hint]);
     return {
       online,
-      title: this.player.health <= 0 ? 'Wrecked' : 'Run complete',
+      title: wrecked ? 'Wrecked' : 'Run complete',
+      wrecked,
       score: run.score,
       newBest: isRecord('score'),
-      stats: [
-        ['Distance', km(run.distance), isRecord('distance')],
-        ['Max speed', `${Math.round(run.topSpeed)} KM/H`, isRecord('topSpeed')],
-        ['Best combo', `x${run.bestMultiplier}`, isRecord('combo')],
-        ['Near misses', String(run.nearMisses), isRecord('nearMisses')],
-        ['Overtakes', String(run.overtakes), isRecord('overtakes')],
-        ['Perfect overtakes', String(run.perfectOvertakes), false],
-        ['Police escapes', String(run.policeEscapes), isRecord('chase')],
-        ['Clean streak', km(run.bestCleanDistance), isRecord('cleanDistance')],
-      ],
-      credits,
+      line: `${(run.distance / 1000).toFixed(2)} km · ${Math.round(run.topSpeed)} km/h · x${run.bestMultiplier} combo`,
       creditsTotal,
       xp,
       level: after,
@@ -694,45 +774,40 @@ export class Game {
       xpStart: before.xp / before.need,
       xpEnd: after.xp / after.need,
       events,
-      next: this.nextGoals(run, isRecord('score')),
+      upgradeReady: Boolean(up && up.affordable),
     };
   }
 
-  // "Why play again?" — the closest concrete things to go after next run.
-  nextGoals(run, newBest) {
-    const prog = this.progression;
+  // The closest concrete goal for the next run: a car unlock, a mission, or the best score.
+  nextGoal(run, newBest) {
     const fmt = n => Math.floor(n).toLocaleString('en-US');
-    const out = [];
-    const up = prog.nextUpgrade();
-    if (up) {
-      out.push(up.affordable
-        ? { hot: true, title: `Upgrade ready: ${up.label}`, detail: `◈ ${fmt(up.cost)} — you have ◈ ${fmt(this.save.credits)}. Visit the garage.`, ratio: -1 }
-        : { title: `Next upgrade: ${up.label}`, detail: `◈ ${fmt(this.save.credits)} / ${fmt(up.cost)}`, ratio: this.save.credits / up.cost });
-    }
-    const car = prog.nextCar();
-    if (car) out.push({ title: `Unlock ${car.car.name}`, detail: car.text, ratio: car.ratio });
-    const missions = this.save.missions.active;
-    let bestMission = null;
+    const car = this.progression.nextCar();
+    if (car && car.ratio >= 0.4) return `Next: ${car.car.name} — ${car.text}`;
+    let best = null;
     let bestRatio = -1;
-    for (const m of missions) {
+    for (const m of this.save.missions.active) {
       const r = Math.min(1, this.goals.missionValue(m, null) / m.target);
       if (r > bestRatio) {
         bestRatio = r;
-        bestMission = m;
+        best = m;
       }
     }
-    if (bestMission) out.push({ title: 'Mission', detail: `${objectiveText(bestMission.type, bestMission.target)} · ◈ ${bestMission.credits}`, ratio: bestRatio });
-    if (!newBest && this.save.records.score > 0) {
-      out.push({ title: `Beat your best: ${fmt(this.save.records.score)}`, detail: `This run: ${fmt(run.score)}`, ratio: Math.min(1, run.score / this.save.records.score) });
-    }
-    return out.slice(0, 3);
+    if (best) return `Mission: ${objectiveText(best.type, best.target)}`;
+    if (!newBest && this.save.records.score > 0) return `Best to beat: ${fmt(this.save.records.score)}`;
+    return car ? `Next: ${car.car.name} — ${car.text}` : null;
   }
 
   // ---------------------------------------------------------------- update
 
   update(dt) {
     this.time += dt;
+    // Resume countdown: the world stays frozen (render only) until 3-2-1-GO finishes.
+    if (this.resumeTimer > 0) {
+      this.updateResume(dt);
+      return;
+    }
     if (this.state === STATE.COUNTDOWN) this.updateCountdown(dt);
+    if (this.tutorial && this.state === STATE.PLAYING) this.tutorial.update(dt);
     if (this.state === STATE.CRASHING) {
       this.crashTimer -= dt;
       const t = 1 - Math.max(0, this.crashTimer) / GAME.CRASH_SLOWMO;
@@ -816,6 +891,7 @@ export class Game {
       this.ui.toast(kicker, title, variant);
       if (variant === 'achievement') this.audio.achievement();
       else this.audio.perfect();
+      this.haptics.pulse('unlock');
     }
     this.ui.setMissionTracker(this.goals.trackerItems(run));
   }
@@ -832,11 +908,33 @@ export class Game {
     if (this.countdown <= 0) {
       this.state = STATE.PLAYING;
       this.traffic.spawnEnabled = true;
+      if (this.input.usingTilt) this.input.tilt.calibrate(); // "straight" = how they hold it at GO
+      if (!this.save.flags.tutorial) {
+        this.hideIntro();
+        this.tutorial = new Tutorial(this);
+        this.tutorial.start();
+      }
       this.introTimer = INTRO_LINGER;
       this.ui.showCallout('GO!', 'go');
       this.audio.countdown(true, 0);
       this.camera.addTrauma(0.25);
       this.camera.kick(0.05);
+    }
+  }
+
+  updateResume(dt) {
+    this.resumeTimer -= dt;
+    const step = Math.ceil(this.resumeTimer / RESUME_STEP);
+    if (step !== this.resumeStep && step > 0) {
+      this.resumeStep = step;
+      this.ui.showCallout(String(step), 'count');
+      this.audio.countdown(false, step);
+    }
+    if (this.resumeTimer <= 0) {
+      this.resumeTimer = 0;
+      this.ui.showCallout('GO!', 'go');
+      this.audio.countdown(true, 0);
+      this.lastTime = performance.now();
     }
   }
 
@@ -899,6 +997,8 @@ export class Game {
   onBoostStart() {
     this.effects.callout('BOOST!', PALETTE.CYAN, this.camera, 40, 0.36, 0.9);
     this.audio.boost();
+    this.haptics.pulse('boost');
+    if (this.tutorial) this.tutorial.notify('boost');
     this.camera.addTrauma(0.12);
     this.camera.kick(0.04);
   }
@@ -963,13 +1063,16 @@ export class Game {
       car.wobble = 1;
       if (car.patternSlot >= 0) this.traffic.resolvePattern(car, true);
     }
+    if (this.tutorial) damage *= 0.5; // first-race lessons: hits hurt, but can't end the run
     const applied = p.takeDamage(damage);
+    if (this.tutorial && p.health < 30) p.health = 30;
     const lost = this.score.breakCombo();
     this.score.stats.crashes++;
     this.events.onCrash();
     this.effects.flash.damage = 1;
     this.camera.addTrauma(sideHit ? 0.4 : 0.65);
     this.input.rumble(sideHit ? 0.45 : 0.75, 180);
+    this.haptics.pulse(sideHit ? 'hit' : 'crash');
     this.audio.crash(sideHit ? 0.6 : 1);
     this.ui.damageFlash(dir);
 

@@ -34,19 +34,16 @@ export function registerMenuScreens(menus, game) {
     const daily = game.goals.daily();
     const d = save().daily;
     const done = daily.goals.filter(g => game.goals.dailyValue(g, null) >= g.target).length;
-    document.getElementById('home-daily').innerHTML = `
-      <div class="daily-head"><b>TODAY'S CHALLENGE</b><span class="muted small">${d.claimed ? 'Completed ✓' : `${done}/3 · +${fmt(daily.reward.credits)} CR`}</span></div>
-      <div class="daily-goals">${daily.goals.map(g => dailyGoalHtml(g)).join('')}</div>`;
+    document.getElementById('home-daily').innerHTML = `<b>DAILY CHALLENGE</b><span>${d.claimed ? 'Completed ✓' : `${done}/3 · +${fmt(daily.reward.credits)} ◈`}</span>`;
     const up = prog().nextUpgrade();
     const unlocked = save().unlockedCars.length;
     const garageSub = document.getElementById('nav-garage-sub');
-    garageSub.textContent = up && up.affordable ? `Upgrade ready: ${up.label}` : `${unlocked} / ${CARS.length} cars unlocked`;
+    garageSub.textContent = up && up.affordable ? 'Upgrade ready' : `${unlocked}/${CARS.length} cars`;
     garageSub.classList.toggle('ready', Boolean(up && up.affordable));
-    const ach = Object.keys(save().achievements).length;
-    document.getElementById('nav-profile-sub').textContent = game.players.registered
-      ? `${game.players.name} · ${ach} achievements` : `Records · ${ach} achievements`;
     const ready = save().missions.active.filter(m => game.goals.missionValue(m, null) >= m.target).length;
-    document.getElementById('nav-missions-sub').textContent = ready ? `${ready} ready to claim` : 'Daily & objectives';
+    const missionsSub = document.getElementById('nav-missions-sub');
+    missionsSub.textContent = ready ? `${ready} complete` : `${save().missions.active.length} active`;
+    missionsSub.classList.toggle('ready', ready > 0);
   };
 
   document.getElementById('home-challenge').addEventListener('click', e => {
@@ -333,38 +330,71 @@ export function registerMenuScreens(menus, game) {
   }
 
   // ---------------------------------------------------------------- settings
-  const SLIDERS = [['master', 'Master volume'], ['music', 'Music volume'], ['sfx', 'Effects volume'], ['engine', 'Engine volume']];
+  // Concise and thumb-sized: controls, display, sound, then the rarely-touched extras.
   const CHOICES = {
-    quality: { label: 'Graphics quality', options: [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']] },
-    shake: { label: 'Screen shake', options: [[0, 'Off'], [0.5, 'Subtle'], [1, 'Full']] },
-    touch: { label: 'Touch controls', options: [['auto', 'Auto'], ['on', 'On'], ['off', 'Off']] },
+    steering: { label: 'Steering', options: [['touch', 'Touch'], ['tilt', 'Tilt']] },
+    haptics: { label: 'Haptics', options: [[true, 'On'], [false, 'Off']] },
+    quality: { label: 'Graphics', options: [['auto', 'Auto'], ['low', 'Low'], ['medium', 'Med'], ['high', 'High']] },
+    fps: { label: 'Frame rate', options: [['auto', 'Auto'], ['30', '30'], ['60', '60']] },
+    shake: { label: 'Screen shake', options: [[0, 'Off'], [0.35, 'Low'], [0.7, 'Normal']] },
+    muted: { label: 'Audio', options: [[false, 'On'], [true, 'Off']] },
     musicEnabled: { label: 'Music', options: [[true, 'On'], [false, 'Off']] },
     ghost: { label: 'Best-run ghost', options: [[true, 'On'], [false, 'Off']] },
-    analytics: { label: 'Anonymous usage stats', options: [[true, 'On'], [false, 'Off']] },
+    analytics: { label: 'Usage stats', options: [[true, 'On'], [false, 'Off']] },
   };
+  let settingsNote = '';
+  let tiltTimer = 0;
 
   menus.register('settings', () => {
     const st = save().settings;
-    const seg = key => {
+    const seg = (key, note = '') => {
       const c = CHOICES[key];
-      return `<div class="setting"><span>${c.label}</span><div class="seg">${c.options.map(([v, label]) =>
+      return `<div class="setting"><span>${c.label}${note ? `<small>${note}</small>` : ''}</span><div class="seg">${c.options.map(([v, label]) =>
         `<button class="${st[key] === v ? 'active' : ''}" data-setting="${key}" data-value="${String(v)}">${label}</button>`).join('')}</div></div>`;
     };
+    const perf = game.perf;
+    const autoNote = st.quality === 'auto' ? `Auto picked ${perf.levelName}${perf.extra ? ' (reduced)' : ''}` : '';
+    const tilt = st.steering === 'tilt';
+    const haptics = game.haptics.supported ? seg('haptics')
+      : '<div class="setting disabled"><span>Haptics<small>Not supported on this device</small></span></div>';
+    const stats = browserOptedOut()
+      ? '<div class="setting disabled"><span>Usage stats<small>Off — your browser asks not to be tracked</small></span></div>'
+      : seg('analytics', 'Anonymous counts, never your name');
     document.getElementById('settings-body').innerHTML = `
-      <h3 class="section-title">Audio</h3>
-      <div class="settings-grid">
-        ${SLIDERS.map(([key, label]) => `<label class="setting"><span>${label}</span><input type="range" min="0" max="1" step="0.05" value="${st[key]}" data-slider="${key}"></label>`).join('')}
-        ${seg('musicEnabled')}
+      ${settingsNote ? `<p class="lb-note" role="status">${escapeHtml(settingsNote)}</p>` : ''}
+      <h3 class="section-title">Controls</h3>
+      <div class="settings-list">
+        ${seg('steering', tilt ? 'Hold the phone like a wheel' : 'Hold the left or right pad')}
+        <label class="setting"><span>Sensitivity<small>${st.sensitivity < 0.95 ? 'Calm' : st.sensitivity > 1.05 ? 'Sharp' : 'Normal'}</small></span>
+          <input type="range" min="0.6" max="1.4" step="0.1" value="${st.sensitivity}" data-slider="sensitivity" aria-label="Steering sensitivity"></label>
+        ${tilt ? `<div class="setting"><span>Tilt center<small>Races re-center at GO</small></span>
+          <span class="tilt-meter" aria-hidden="true"><i id="tilt-dot"></i></span><button class="btn-small ghost" data-tilt-center>Center</button></div>` : ''}
+        ${haptics}
       </div>
-      <h3 class="section-title">Graphics &amp; controls</h3>
-      <div class="settings-grid">${seg('quality')}${seg('shake')}${seg('touch')}${seg('ghost')}</div>
-      <p class="muted small" style="margin-top:14px">Graphics quality only changes visual detail — gameplay is identical at every setting.</p>
-      <h3 class="section-title" style="margin-top:22px">Privacy</h3>
-      <div class="settings-grid">${browserOptedOut()
-    ? '<div class="setting"><span>Anonymous usage stats</span><span class="muted small">Off — your browser asks not to be tracked</span></div>'
-    : seg('analytics')}</div>
-      <p class="muted small" style="margin-top:10px">Usage stats are counts like "races finished" and "cars unlocked", tied to a random id stored on this device — never your name, profile or IP address. They help balance the game.</p>
-      <div class="danger-zone"><button class="btn-small" data-reset="1">Reset all progress</button></div>`;
+      <h3 class="section-title" style="margin-top:18px">Display</h3>
+      <div class="settings-list">${seg('quality', autoNote)}${seg('fps', 'Auto = 60, or 30 if the phone struggles')}${seg('shake')}</div>
+      <h3 class="section-title" style="margin-top:18px">Sound</h3>
+      <div class="settings-list">${seg('muted')}${seg('musicEnabled')}</div>
+      <h3 class="section-title" style="margin-top:18px">More</h3>
+      <div class="settings-list">${seg('ghost')}${stats}</div>
+      <div class="danger-zone">
+        <button class="btn-small ghost" data-replay-tutorial>Replay tutorial</button>
+        <button class="btn-small" data-reset="1">Reset progress</button>
+      </div>`;
+    settingsNote = '';
+    clearInterval(tiltTimer);
+    if (tilt && game.input.tilt.active) {
+      // Live tilt readout while this screen is open (a light timer, not the render loop).
+      tiltTimer = setInterval(() => {
+        const dot = document.getElementById('tilt-dot');
+        if (!dot || menus.current !== 'settings') {
+          clearInterval(tiltTimer);
+          return;
+        }
+        game.input.tilt.update(0.05);
+        dot.style.transform = `translateX(${Math.round(game.input.tilt.steer * 64)}px)`;
+      }, 50);
+    }
   });
 
   const body = document.getElementById('settings-body');
@@ -375,17 +405,45 @@ export function registerMenuScreens(menus, game) {
     game.applySettings();
     game.store.saveSoon();
   });
-  body.addEventListener('click', e => {
+  body.addEventListener('change', e => {
+    if (e.target.dataset.slider) menus.renderers.settings();
+  });
+  body.addEventListener('click', async e => {
     const btn = e.target.closest('[data-setting]');
     if (btn) {
       const key = btn.dataset.setting;
       const option = CHOICES[key].options.find(([v]) => String(v) === btn.dataset.value);
+      game.audio.ui('click');
+      game.haptics.pulse('tap');
+      if (key === 'steering' && option[0] === 'tilt' && !game.input.tilt.active) {
+        // This tap is the user gesture iOS needs for the motion-sensor permission prompt.
+        const result = await game.input.enableTilt();
+        if (result !== 'ok') {
+          settingsNote = result === 'denied' ? 'Motion access was denied. Touch steering stays on.'
+            : 'This device has no motion sensor. Touch steering stays on.';
+          menus.renderers.settings();
+          return;
+        }
+        game.input.tilt.calibrate();
+      }
       save().settings[key] = option[0];
       if (key === 'analytics') game.analytics.optOutChanged();
       else game.analytics.track('settings_changed', { key, value: String(option[0]) });
-      game.audio.ui('click');
       game.applySettings();
       game.store.save();
+      menus.renderers.settings();
+      return;
+    }
+    if (e.target.closest('[data-tilt-center]')) {
+      save().settings.tiltCenter = game.input.tilt.calibrate();
+      game.store.save();
+      game.haptics.pulse('tap');
+      return;
+    }
+    if (e.target.closest('[data-replay-tutorial]')) {
+      delete save().flags.tutorial;
+      game.store.save();
+      settingsNote = 'The tutorial will run at the start of your next race.';
       menus.renderers.settings();
       return;
     }

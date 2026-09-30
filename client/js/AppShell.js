@@ -32,7 +32,7 @@ export class AppShell {
   // Called from the game's resize handling, which fires reliably on rotation.
   checkOrientation() {
     const portrait = window.innerHeight > window.innerWidth;
-    if (portrait && this.game.ui.isTouchDevice() && this.game.isRaceActive()) this.game.pause();
+    if (portrait && this.game.isRaceActive()) this.game.pause();
   }
 
   start() {
@@ -90,6 +90,13 @@ export class AppShell {
     }
     const ok = await fullscreen.toggle();
     if (!ok) this.game.ui.toast('Fullscreen unavailable', 'The browser blocked the request', 'mission');
+  }
+
+  // Best-effort fullscreen + landscape lock from a user gesture (Android browsers). iOS Safari has
+  // no element fullscreen for pages; there the rotate prompt and "Add to Home Screen" cover it.
+  enterImmersive() {
+    if (!fullscreen.supported || fullscreen.active) return;
+    fullscreen.enter().catch(() => {});
   }
 
   async install() {

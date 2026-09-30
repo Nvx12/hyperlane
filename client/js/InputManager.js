@@ -1,29 +1,41 @@
 import { GamepadInput } from './GamepadInput.js';
+import { TouchInput } from './TouchInput.js';
+import { TiltInput } from './TiltInput.js';
 import { moveFocus, activateFocused } from './FocusNav.js';
 
+// Keyboard remains for development and testing only: it works, but no screen ever mentions it.
 const KEY_ACTIONS = {
   ArrowLeft: 'left',
   KeyA: 'left',
   ArrowRight: 'right',
   KeyD: 'right',
-  ArrowUp: 'throttle',
-  KeyW: 'throttle',
   ArrowDown: 'brake',
   KeyS: 'brake',
   Space: 'boost',
 };
 
+// Digital steering (touch / keyboard) is ramped instead of snapping to full lock: a quick tap is a
+// gentle correction, a hold reaches full lock in ~0.17 s at sensitivity 1. Releases and direction
+// flips pass through zero quickly so the car straightens without drifting.
+const STEER_RAMP = 6; // per second at sensitivity 1
+const STEER_RELEASE = 14;
+
 const isTextField = el => el instanceof HTMLElement
   && (el.isContentEditable || el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !['range', 'checkbox', 'radio', 'button'].includes(el.type)));
 
-// One set of driving actions (steer / throttle / brake / boost) fed by keyboard, touch and
-// gamepad, plus edge-triggered callbacks for menu actions. The game only reads the getters.
+// One set of driving actions (steer / brake / boost; acceleration is automatic) fed by touch,
+// optional tilt, and — for development or a connected controller — keyboard and gamepad.
+// The game only reads the getters.
 export class InputManager {
   constructor() {
-    this.keys = { left: false, right: false, throttle: false, brake: false, boost: false };
-    this.touch = { left: false, right: false, brake: false, boost: false };
-    this.touchMode = false; // touch players get automatic throttle
-    this.method = 'keyboard'; // last used: keyboard | touch | gamepad (drives on-screen hints)
+    this.keys = { left: false, right: false, brake: false, boost: false };
+    this.touch = new TouchInput();
+    this.tilt = new TiltInput();
+    this.steering = 'touch'; // settings: touch | tilt
+    this.sensitivity = 1;
+    this.steerValue = 0;
+    this.touchMode = false; // a finger has been used this session
+    this.method = 'touch'; // last used: touch | keyboard | gamepad (gamepad shows its own hints)
     this.onPause = null;
     this.onConfirm = null;
     this.onMute = null;
@@ -33,7 +45,16 @@ export class InputManager {
     this.onMethodChange = null;
     this.onPadConnect = null;
     this.onPadDisconnect = null;
+    this.onControlPress = null; // (kind) => void: haptics / audio feedback for touch presses
     this.isRacing = () => false;
+
+    this.touch.onActivity = () => {
+      this.touchMode = true;
+      this.setMethod('touch');
+    };
+    this.touch.onPress = kind => {
+      if (this.onControlPress) this.onControlPress(kind);
+    };
 
     this.pad = new GamepadInput();
     this.pad.onConnect = id => {
@@ -41,7 +62,7 @@ export class InputManager {
       if (this.onPadConnect) this.onPadConnect(id);
     };
     this.pad.onDisconnect = () => {
-      if (this.method === 'gamepad') this.setMethod('keyboard');
+      if (this.method === 'gamepad') this.setMethod('touch');
       if (this.onPadDisconnect) this.onPadDisconnect();
     };
     this.pad.onButton = btn => this.handlePadButton(btn);
@@ -57,8 +78,6 @@ export class InputManager {
       if (e.pointerType === 'touch') {
         this.touchMode = true;
         this.setMethod('touch');
-      } else {
-        this.setMethod('keyboard');
       }
       if (this.onFirstInteraction) this.onFirstInteraction();
     }, { passive: true });
@@ -70,20 +89,62 @@ export class InputManager {
     });
   }
 
+  bindTouchControls(root) {
+    this.touch.bind(root);
+  }
+
+  // settings: { steering, sensitivity, tiltCenter }
+  configure(settings) {
+    this.sensitivity = settings.sensitivity;
+    this.tilt.sensitivity = settings.sensitivity;
+    this.tilt.center = settings.tiltCenter;
+    this.steering = settings.steering;
+    if (this.steering !== 'tilt' && this.tilt.active) this.tilt.stop();
+    document.body.classList.toggle('tilt-steering', this.usingTilt);
+  }
+
+  get usingTilt() {
+    return this.steering === 'tilt' && this.tilt.active;
+  }
+
+  // Starts the sensor (call from a user gesture). Resolves 'ok' or a reason to fall back to touch.
+  async enableTilt() {
+    const result = await this.tilt.start();
+    document.body.classList.toggle('tilt-steering', this.usingTilt);
+    return result;
+  }
+
   setMethod(method) {
     if (this.method === method) return;
     this.method = method;
-    if (method !== 'touch' && method !== 'gamepad') this.touchMode = false;
-    if (method === 'gamepad') this.touchMode = false;
     document.body.classList.toggle('pad-active', method === 'gamepad');
     if (this.onMethodChange) this.onMethodChange(method);
   }
 
   // Called once per frame by the game loop (also while paused, so the pad can resume).
   poll(dt) {
-    if (!this.pad.connected) return;
-    this.pad.poll(dt);
-    if (this.method !== 'gamepad' && performance.now() - this.pad.lastUsed < 50) this.setMethod('gamepad');
+    if (this.pad.connected) {
+      this.pad.poll(dt);
+      if (this.method !== 'gamepad' && performance.now() - this.pad.lastUsed < 50) this.setMethod('gamepad');
+    }
+    this.tilt.update(dt);
+
+    // Analog sources are used as-is; digital ones are ramped.
+    if (this.pad.connected && this.pad.steer !== 0) {
+      this.steerValue = this.pad.steer;
+      return;
+    }
+    const digital = this.touch.steer !== 0 ? this.touch.steer : (this.keys.right ? 1 : 0) - (this.keys.left ? 1 : 0);
+    if (digital === 0 && this.usingTilt) {
+      this.steerValue = this.tilt.steer;
+      return;
+    }
+    const s = this.sensitivity;
+    const target = digital * Math.min(1, 0.8 + 0.2 * s);
+    const v = this.steerValue;
+    const growing = target !== 0 && Math.sign(target) === Math.sign(v || target) && Math.abs(target) > Math.abs(v);
+    const rate = (growing ? STEER_RAMP * s : STEER_RELEASE) * dt;
+    this.steerValue = v < target ? Math.min(target, v + rate) : Math.max(target, v - rate);
   }
 
   handlePadButton(btn) {
@@ -107,7 +168,7 @@ export class InputManager {
   }
 
   handleKeyDown(e) {
-    // Typing in a text field (racer name) must not steer, mute or open menus.
+    // Typing in a text field (racer name) must not steer or trigger shortcuts.
     if (isTextField(e.target)) {
       if (e.code === 'Escape') e.target.blur();
       return;
@@ -117,7 +178,6 @@ export class InputManager {
       this.keys[action] = true;
       e.preventDefault();
     }
-    this.setMethod('keyboard');
     if (this.onFirstInteraction) this.onFirstInteraction();
     if (e.repeat) return;
     switch (e.code) {
@@ -149,37 +209,11 @@ export class InputManager {
     if (action) this.keys[action] = false;
   }
 
-  bindTouchControls(root) {
-    if (!root) return;
-    root.querySelectorAll('[data-touch]').forEach(btn => {
-      const action = btn.dataset.touch;
-      const release = () => {
-        this.touch[action] = false;
-        btn.classList.remove('pressed');
-      };
-      btn.addEventListener('pointerdown', e => {
-        e.preventDefault();
-        this.touchMode = true;
-        this.setMethod('touch');
-        this.touch[action] = true;
-        btn.classList.add('pressed');
-        try {
-          btn.setPointerCapture(e.pointerId);
-        } catch {
-          /* capture unsupported — pointerup still releases */
-        }
-      });
-      btn.addEventListener('pointerup', release);
-      btn.addEventListener('pointercancel', release);
-      btn.addEventListener('lostpointercapture', release);
-      btn.addEventListener('contextmenu', e => e.preventDefault());
-    });
-  }
-
   reset() {
     for (const k in this.keys) this.keys[k] = false;
-    for (const k in this.touch) this.touch[k] = false;
+    this.touch.reset();
     this.pad.clearHeld();
+    this.steerValue = 0;
   }
 
   rumble(strength, ms) {
@@ -187,12 +221,12 @@ export class InputManager {
   }
 
   get steer() {
-    const digital = (this.keys.right || this.touch.right ? 1 : 0) - (this.keys.left || this.touch.left ? 1 : 0);
-    return digital !== 0 ? digital : this.pad.steer;
+    return this.steerValue;
   }
 
+  // Acceleration is automatic: the player's job is steering, braking, boosting and risk.
   get throttle() {
-    return this.keys.throttle || this.touchMode || this.pad.throttle;
+    return true;
   }
 
   get brake() {

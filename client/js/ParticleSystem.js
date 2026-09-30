@@ -28,8 +28,10 @@ export class ParticleSystem {
     this.sprites = [g.spark, g.boost, g.smoke, g.debris, g.wind, g.dust];
   }
 
-  setLimitScale(scale) {
-    this.limit = Math.max(40, Math.floor(this.max * scale));
+  // Explicit particle budget per graphics tier (see Performance.js QUALITY).
+  setLimit(count) {
+    this.limit = Math.max(40, Math.min(this.max, Math.floor(count)));
+    if (this.count > this.limit) this.count = this.limit;
   }
 
   clear() {

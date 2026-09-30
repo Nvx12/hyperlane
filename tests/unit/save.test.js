@@ -62,7 +62,7 @@ test('damaged or hand-edited values are sanitized', () => {
     level: 0,
     xp: 'lots',
     unlockedCars: ['phantom', 42],
-    settings: { master: 7, quality: 'ultra', shake: 3, touch: 'maybe', retiredOption: true },
+    settings: { master: 7, quality: 'ultra', shake: 3, fps: '144', steering: 'wheel', sensitivity: 9, tiltCenter: 'x', retiredOption: true },
   }));
   const d = new SaveManager().data;
   assert.equal(d.credits, 0);
@@ -70,10 +70,38 @@ test('damaged or hand-edited values are sanitized', () => {
   assert.equal(d.xp, 0);
   assert.deepEqual(d.unlockedCars, ['vireo', 'phantom']);
   assert.equal(d.settings.master, 1);
-  assert.equal(d.settings.quality, 'high');
-  assert.equal(d.settings.shake, 1);
-  assert.equal(d.settings.touch, 'auto');
+  assert.equal(d.settings.quality, 'auto');
+  assert.equal(d.settings.shake, 0.35);
+  assert.equal(d.settings.fps, 'auto');
+  assert.equal(d.settings.steering, 'touch');
+  assert.equal(d.settings.sensitivity, 1.4);
+  assert.equal(d.settings.tiltCenter, 0);
   assert.ok(!('retiredOption' in d.settings));
+});
+
+test('migrates a v1 (desktop-era) save to the mobile settings schema', () => {
+  const v1 = defaultSave();
+  v1.saveVersion = 1;
+  v1.settings = { master: 0.5, music: 0.4, sfx: 0.8, engine: 0.7, muted: false, musicEnabled: true, shake: 1, quality: 'high', touch: 'on', ghost: true, analytics: true };
+  v1.stats.races = 12;
+  v1.credits = 900;
+  storage.setItem('nightvector.save', JSON.stringify(v1));
+  const d = new SaveManager().data;
+  assert.equal(d.saveVersion, SAVE_VERSION);
+  assert.equal(d.settings.shake, 0.7, 'old "full" shake maps to Normal');
+  assert.equal(d.settings.quality, 'auto', 'old default High becomes Auto');
+  assert.ok(!('touch' in d.settings));
+  assert.equal(d.settings.steering, 'touch');
+  assert.equal(d.settings.master, 0.5, 'unrelated settings kept');
+  assert.equal(d.flags.tutorial, true, 'existing players skip the tutorial');
+  assert.equal(d.credits, 900);
+
+  const low = { ...defaultSave(), saveVersion: 1, settings: { ...v1.settings, shake: 0.5, quality: 'low' } };
+  storage.setItem('nightvector.save', JSON.stringify(low));
+  const e = new SaveManager().data;
+  assert.equal(e.settings.shake, 0.35);
+  assert.equal(e.settings.quality, 'low', 'an explicit non-default choice is kept');
+  assert.equal(e.flags.tutorial, undefined, 'new players still get the tutorial');
 });
 
 test('blocked storage (private mode) still yields a playable save', () => {

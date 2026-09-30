@@ -102,6 +102,8 @@ export class SkillSystem {
       g.camera.addTrauma(0.08 + 0.08 * grade.grade);
       if (grade.grade >= 1) g.camera.kick(0.015 + 0.02 * grade.grade);
       g.audio.nearMiss(side, grade.grade);
+      g.haptics.pulse('near');
+      if (g.tutorial) g.tutorial.notify('nearMiss');
     }
 
     stats.overtakes++;

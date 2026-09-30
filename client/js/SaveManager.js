@@ -9,17 +9,24 @@ const PREVIOUS_KEY = 'hyperlane.save'; // same schema, stored under the pre-rele
 const LEGACY_KEY = 'hyperlane.save.v1'; // v1 of the game stored only score/distance/mute
 export { SAVE_VERSION };
 
+export const SHAKE_LEVELS = [0, 0.35, 0.7]; // Off | Low | Normal — phone screens need a calm camera
+
 export function defaultSettings() {
   return {
     master: 0.8,
     music: 0.45,
     sfx: 0.8,
     engine: 0.7,
-    muted: false,
+    muted: false, // Audio: On/Off
     musicEnabled: true,
-    shake: 1, // 0 | 0.5 | 1
-    quality: 'high', // low | medium | high
-    touch: 'auto', // auto | on | off
+    shake: 0.35, // Low
+    quality: 'auto', // auto | low | medium | high
+    autoLevel: -1, // AUTO quality learned on this device (0 low … 2 high); -1 = not measured yet
+    fps: 'auto', // auto | 30 | 60
+    steering: 'touch', // touch | tilt
+    sensitivity: 1, // 0.6 … 1.4
+    tiltCenter: 0, // tilt calibration (radians)
+    haptics: true,
     ghost: true, // personal-best ghost car
     analytics: true, // anonymous usage stats (also off when the browser sends DNT/GPC)
   };
@@ -71,8 +78,24 @@ function mergeInto(target, source) {
   return target;
 }
 
-// saveVersion N → N+1 transforms. Add entries here when the schema changes.
-const MIGRATIONS = {};
+// saveVersion N → N+1 transforms, applied to the raw parsed save before defaults are merged.
+// Add entries here when the schema changes.
+const MIGRATIONS = {
+  // 1 → 2: mobile-first release. Shake levels were rescaled for phone screens, "high" was the
+  // old default quality (not a choice) so it becomes AUTO, the touch on/off option is gone
+  // (touch is the primary scheme), and existing players skip the first-race tutorial.
+  1(data) {
+    const s = data.settings && typeof data.settings === 'object' ? data.settings : null;
+    if (s) {
+      if (s.shake === 1) s.shake = 0.7;
+      else if (s.shake === 0.5) s.shake = 0.35;
+      if (s.quality === 'high') s.quality = 'auto';
+      delete s.touch;
+    }
+    const races = data.stats && Number(data.stats.races);
+    if (races > 0) data.flags = { ...(data.flags && typeof data.flags === 'object' ? data.flags : {}), tutorial: true };
+  },
+};
 
 function migrate(data) {
   let version = Number(data.saveVersion) || 0;
@@ -93,9 +116,13 @@ function sanitize(data) {
   const d = defaultSettings();
   const s = data.settings;
   for (const key of ['master', 'music', 'sfx', 'engine']) s[key] = clampNum(s[key], 0, 1, d[key]);
-  s.shake = oneOf(s.shake, [0, 0.5, 1], d.shake);
-  s.quality = oneOf(s.quality, ['low', 'medium', 'high'], d.quality);
-  s.touch = oneOf(s.touch, ['auto', 'on', 'off'], d.touch);
+  s.shake = oneOf(s.shake, SHAKE_LEVELS, d.shake);
+  s.quality = oneOf(s.quality, ['auto', 'low', 'medium', 'high'], d.quality);
+  s.autoLevel = oneOf(s.autoLevel, [-1, 0, 1, 2], d.autoLevel);
+  s.fps = oneOf(s.fps, ['auto', '30', '60'], d.fps);
+  s.steering = oneOf(s.steering, ['touch', 'tilt'], d.steering);
+  s.sensitivity = Math.round(clampNum(s.sensitivity, 0.6, 1.4, d.sensitivity) * 10) / 10;
+  s.tiltCenter = clampNum(s.tiltCenter, -1, 1, d.tiltCenter);
   for (const key of Object.keys(s)) if (!(key in d)) delete s[key]; // drop retired options
   data.credits = Math.floor(clampNum(data.credits, 0, 1e9, 0));
   data.xp = clampNum(data.xp, 0, 1e9, 0);
