@@ -1,8 +1,9 @@
 import { ENVIRONMENTS } from './data/environments.js';
 import { OBJECTIVES } from './data/missions.js';
+import { AVATARS, getAvatar } from './data/avatars.js';
 import { CARS } from './balance.js';
 import { escapeHtml } from './UIManager.js';
-import { checkName } from './net/PlayerService.js';
+import { validateDisplayName } from './names.js';
 import { browserOptedOut } from './net/Analytics.js';
 
 const fmt = n => Math.floor(n).toLocaleString('en-US');
@@ -12,12 +13,53 @@ const duration = s => {
   const m = Math.floor((s % 3600) / 60);
   return h ? `${h}h ${m}m` : `${m}m ${Math.floor(s % 60)}s`;
 };
+const dateText = t => new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
-// Play (route select), Missions, Profile (identity, records, achievements) and Settings screens.
+export const avatarHtml = (id, size = '') => {
+  const a = getAvatar(id);
+  return `<span class="avatar ${size}" style="--av:${a.color}" aria-hidden="true">${a.glyph}</span>`;
+};
+
+function avatarPicker(selected) {
+  return AVATARS.map(a => `<button type="button" class="avatar-opt ${a.id === selected ? 'active' : ''}" data-avatar="${a.id}" role="radio"
+    aria-checked="${a.id === selected}" aria-label="${a.id}" style="--av:${a.color}">${a.glyph}</button>`).join('');
+}
+
+// Welcome (first launch), Play (route select), Missions, Profile and Settings screens.
 // Rendered on open / on change only — never per frame.
 export function registerMenuScreens(menus, game) {
   const prog = () => game.progression;
+  const state = () => game.progress;
   const save = () => game.save;
+
+  // ---------------------------------------------------------------- welcome (first launch)
+  let welcomeAvatar = AVATARS[0].id;
+  menus.register('welcome', () => {
+    document.getElementById('welcome-avatars').innerHTML = avatarPicker(welcomeAvatar);
+    document.getElementById('welcome-msg').textContent = '';
+    const input = document.querySelector('#welcome-form input[name="name"]');
+    if (!input.value && game.players.registered) input.value = game.players.name; // an existing online name
+  });
+  document.getElementById('welcome-avatars').addEventListener('click', e => {
+    const opt = e.target.closest('[data-avatar]');
+    if (!opt) return;
+    game.audio.ui('click');
+    welcomeAvatar = opt.dataset.avatar;
+    document.getElementById('welcome-avatars').innerHTML = avatarPicker(welcomeAvatar);
+  });
+  document.getElementById('welcome-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const r = game.store.setProfile(e.target.elements.name.value, welcomeAvatar);
+    if (!r.ok) {
+      game.audio.ui('deny');
+      document.getElementById('welcome-msg').textContent = r.message;
+      return;
+    }
+    game.audio.ui('confirm');
+    game.analytics.track('driver_created');
+    menus.open('home');
+    game.play(); // "Start racing" means it: the first race (with the tutorial) starts now
+  });
 
   // ---------------------------------------------------------------- home: daily card
   menus.onHome = () => {
@@ -32,18 +74,25 @@ export function registerMenuScreens(menus, game) {
         <button class="btn-small link" data-challenge="dismiss">Dismiss</button></div>`;
     }
     const daily = game.goals.daily();
-    const d = save().daily;
+    const d = state().daily;
     const done = daily.goals.filter(g => game.goals.dailyValue(g, null) >= g.target).length;
     document.getElementById('home-daily').innerHTML = `<b>DAILY CHALLENGE</b><span>${d.claimed ? 'Completed ✓' : `${done}/3 · +${fmt(daily.reward.credits)} ◈`}</span>`;
     const up = prog().nextUpgrade();
-    const unlocked = save().unlockedCars.length;
+    const buyable = CARS.some(c => prog().status(c.id).state === 'available');
     const garageSub = document.getElementById('nav-garage-sub');
-    garageSub.textContent = up && up.affordable ? 'Upgrade ready' : `${unlocked}/${CARS.length} cars`;
-    garageSub.classList.toggle('ready', Boolean(up && up.affordable));
-    const ready = save().missions.active.filter(m => game.goals.missionValue(m, null) >= m.target).length;
+    garageSub.textContent = buyable ? 'New car available' : up && up.affordable ? 'Upgrade ready' : `${state().ownedCars.length}/${CARS.length} cars`;
+    garageSub.classList.toggle('ready', Boolean(buyable || (up && up.affordable)));
+    const ready = state().missions.active.filter(m => game.goals.missionValue(m, null) >= m.target).length;
     const missionsSub = document.getElementById('nav-missions-sub');
-    missionsSub.textContent = ready ? `${ready} complete` : `${save().missions.active.length} active`;
+    missionsSub.textContent = ready ? `${ready} complete` : `${state().missions.active.length} active`;
     missionsSub.classList.toggle('ready', ready > 0);
+    const p = save().profile;
+    document.getElementById('nav-profile-sub').textContent = p ? p.name : 'Driver';
+    if (save().flags.rebalanced) {
+      delete save().flags.rebalanced;
+      game.store.save();
+      game.ui.toast('Progression rebalanced', 'Cars now unlock with level and skill, then are bought with credits', 'unlock');
+    }
   };
 
   document.getElementById('home-challenge').addEventListener('click', e => {
@@ -68,7 +117,7 @@ export function registerMenuScreens(menus, game) {
 
   // ---------------------------------------------------------------- play
   menus.register('play', () => {
-    const level = save().level;
+    const level = state().level;
     const selected = game.selectedEnv;
     document.getElementById('env-grid').innerHTML = ENVIRONMENTS.map(env => {
       const locked = level < env.level;
@@ -101,16 +150,16 @@ export function registerMenuScreens(menus, game) {
   menus.register('missions', () => {
     const goals = game.goals;
     const daily = goals.daily();
-    const d = save().daily;
-    const missions = goals.ensureMissions();
+    const d = state().daily;
+    const missions = goals.missions();
     const tomorrow = new Date();
     tomorrow.setHours(24, 0, 0, 0);
     const hoursLeft = Math.max(0, Math.ceil((tomorrow - Date.now()) / 3600000));
     document.getElementById('missions-body').innerHTML = `
       <h3 class="section-title">Today's challenge</h3>
       <div class="daily-card">
-        <div class="daily-head"><b>${d.claimed ? 'COMPLETED ✓' : `REWARD ◈ ${fmt(daily.reward.credits)} + ${daily.reward.xp} XP`}</b>
-          <span class="muted small">Local challenge · resets in ${hoursLeft}h</span></div>
+        <div class="daily-head"><b>${d.claimed ? 'COMPLETED ✓' : `REWARD ◈ ${fmt(daily.reward.credits)} + ${fmt(daily.reward.xp)} XP`}</b>
+          <span class="muted small">Resets in ${hoursLeft}h</span></div>
         <div class="daily-goals">${daily.goals.map(g => dailyGoalHtml(g)).join('')}</div>
       </div>
       <h3 class="section-title">Active missions</h3>
@@ -121,9 +170,9 @@ export function registerMenuScreens(menus, game) {
         const done = v >= m.target;
         return `<div class="mission ${done ? 'done' : ''}"><p>${escapeHtml(obj.text(m.target))}</p>
           <div class="xp-bar"><i style="transform:scaleX(${v / m.target})"></i></div>
-          <div class="mission-meta"><span>${obj.single ? 'In one run · ' : ''}${shown} / ${m.target}${done ? ' · claimed after your next run' : ''}</span><b>◈ ${m.credits} · ${m.xp} XP</b></div></div>`;
+          <div class="mission-meta"><span>${obj.single ? 'In one run · ' : ''}${shown} / ${m.target}${done ? ' · claimed after your next run' : ''}</span><b>◈ ${fmt(m.credits)} · ${fmt(m.xp)} XP</b></div></div>`;
       }).join('')}</div>
-      <p class="muted small">Completed missions pay out when a run ends and are replaced with new ones. ${save().stats.missionsCompleted} completed so far.</p>`;
+      <p class="muted small">Completed missions pay out when a run ends and are replaced with new ones. ${fmt(state().stats.missionsCompleted)} completed so far.</p>`;
   });
 
   // ---------------------------------------------------------------- leaderboard
@@ -171,7 +220,7 @@ export function registerMenuScreens(menus, game) {
     const f = LB_FORMAT[data.category];
     const row = (rank, name, value, car, me) => `<li class="lb-row ${me ? 'me' : ''}"><span class="lb-rank">#${rank}</span>
       <span class="lb-name">${escapeHtml(name)}${car ? `<small>${escapeHtml(carName(car))}</small>` : ''}</span><span class="lb-value">${f(value)}</span></li>`;
-    const join = game.players.registered ? '' : '<p class="lb-note">Create an online profile in <b style="display:inline">Profile</b> to post your runs here.</p>';
+    const join = game.players.registered ? '' : '<p class="lb-note">Go online from your <b style="display:inline">Profile</b> to post your runs here.</p>';
     if (!data.entries.length) {
       return `<p class="lb-note"><b>No runs yet</b>${data.period === 'day' ? 'Nobody has set a time today — be the first.' : 'Be the first on the board.'}</p>${join}`;
     }
@@ -192,103 +241,95 @@ export function registerMenuScreens(menus, game) {
   });
 
   // ---------------------------------------------------------------- profile
-  // Online identity card + Records (stats) and Achievements tabs.
+  // Driver card (local identity), online account card, then Records / Awards tabs.
   let ptab = 'stats';
-  let idMode = 'view'; // view | rename
-  let idMessage = '';
+  let editing = false;
+  let editAvatar = null;
+  let driverMessage = '';
+  const account = game.accountUi ? game.accountUi : null;
 
   menus.register('profile', () => {
-    renderIdentity();
+    renderDriver();
+    if (account) account.render();
     const list = game.goals.achievementList();
     document.getElementById('ach-count').textContent = `${list.filter(a => a.unlocked).length}/${list.length}`;
     document.querySelectorAll('[data-ptab]').forEach(t => t.classList.toggle('active', t.dataset.ptab === ptab));
     document.getElementById('stats-body').hidden = ptab !== 'stats';
     document.getElementById('ach-grid').hidden = ptab !== 'achievements';
-    if (ptab === 'stats') renderStats();
+    if (ptab === 'stats') renderStats(list);
     else renderAchievements(list);
-    // Pull server-side bests in the background; re-render only the card when they arrive.
-    if (game.players.registered && !game.players.busy) {
-      game.players.refresh().then(r => {
-        if (!r.ok && r.message && !r.offline) idMessage = r.message; // offline shows in the card label
-        if (menus.current === 'profile') renderIdentity();
-      });
-    }
   });
 
-  function renderIdentity() {
-    const players = game.players;
-    const card = document.getElementById('identity-card');
-    const online = game.api.online;
-    const msg = `<p class="id-msg" role="alert">${escapeHtml(idMessage)}</p>`;
-    const nameForm = (label, value) => `<form data-id-form novalidate>
-        <input type="text" name="name" maxlength="16" minlength="3" required autocomplete="nickname" spellcheck="false"
-          placeholder="Racer name" value="${escapeHtml(value)}" aria-label="Racer name" ${online ? '' : 'disabled'}>
-        <button class="btn-small ghost" type="submit" ${online ? '' : 'disabled'}>${label}</button>
-        ${players.registered ? '<button class="btn-small link" type="button" data-id-act="cancel">Cancel</button>' : ''}
-      </form>`;
-
-    if (!players.registered) {
-      card.innerHTML = `<div class="id-main"><span class="hud-label">Race online</span>
-          <p>${online ? 'Pick a racer name to post your runs to the global leaderboards. Only this name is shared — no email, no account.'
-    : 'Offline — you can create an online profile when you are connected. Your progress is always saved on this device.'}</p></div>
-        ${nameForm('Create profile', '')}${msg}`;
+  function renderDriver() {
+    const card = document.getElementById('driver-card');
+    const p = save().profile;
+    if (!p) {
+      card.innerHTML = '';
       return;
     }
-    if (idMode === 'rename') {
-      card.innerHTML = `<div class="id-main"><span class="hud-label">Change racer name</span><p>Your name appears on the leaderboards.</p></div>${nameForm('Save', players.name)}${msg}`;
-      card.querySelector('input').focus();
+    const lv = prog().levelProgress();
+    if (editing) {
+      card.innerHTML = `<form class="driver-edit" data-driver-form novalidate>
+          <span class="hud-label">Edit driver</span>
+          <input type="text" name="name" maxlength="32" value="${escapeHtml(p.name)}" aria-label="Driver name" spellcheck="false" autocomplete="nickname">
+          <div class="avatar-pick">${avatarPicker(editAvatar || p.avatar)}</div>
+          <div class="id-actions"><button class="btn-small ghost" type="submit">Save</button><button class="btn-small link" type="button" data-driver-act="cancel">Cancel</button></div>
+          <p class="id-msg" role="alert">${escapeHtml(driverMessage)}</p>
+        </form>`;
       return;
     }
-    const b = players.profile && players.profile.best;
-    const best = b ? `Online best ${fmt(b.score)} · ${km(b.distance)} · ${fmt(b.speed)} km/h · x${b.combo}` : 'No ranked runs yet — finish a race while online.';
-    card.innerHTML = `<div class="id-main"><span class="hud-label">Online profile${online ? '' : ' · offline'}</span>
-        <b class="id-name">${escapeHtml(players.name)}</b><p>${escapeHtml(best)}</p></div>
-      <div class="id-actions">
-        <button class="btn-small ghost" data-id-act="rename" ${online ? '' : 'disabled'}>Rename</button>
-        <button class="btn-small" data-id-act="delete" ${online ? '' : 'disabled'}>Delete online profile</button>
-      </div>${msg}`;
+    card.innerHTML = `${avatarHtml(p.avatar, 'big')}
+      <div class="driver-main">
+        <b class="id-name">${escapeHtml(p.name)}</b>
+        <span class="driver-level">Level ${lv.level} · ${lv.title}</span>
+        <div class="xp-bar"><i style="transform:scaleX(${lv.need ? lv.xp / lv.need : 1})"></i></div>
+        <small class="muted">${lv.max ? 'Max level' : `${fmt(lv.xp)} / ${fmt(lv.need)} XP`} · Driver since ${dateText(p.createdAt)}</small>
+      </div>
+      <button class="btn-small ghost" data-driver-act="edit">Edit</button>`;
   }
 
   const profileBody = document.getElementById('profile-body');
   profileBody.addEventListener('submit', async e => {
-    const form = e.target.closest('[data-id-form]');
+    const form = e.target.closest('[data-driver-form]');
     if (!form) return;
     e.preventDefault();
+    const p = save().profile;
     const name = form.elements.name.value;
-    const check = checkName(name);
+    const check = validateDisplayName(name);
     if (!check.ok) {
-      idMessage = check.message;
-      renderIdentity();
+      driverMessage = check.message;
+      renderDriver();
       return;
     }
-    game.audio.ui('click');
-    idMessage = '';
-    form.querySelectorAll('input, button').forEach(el => { el.disabled = true; });
-    const wasRegistered = game.players.registered;
-    const r = wasRegistered ? await game.players.rename(name) : await game.players.create(name);
-    if (r.ok) {
-      idMode = 'view';
-      game.ui.toast('Online profile', `Racing as ${game.players.name}`, 'unlock');
-      game.shell.emit('profile', { action: wasRegistered ? 'renamed' : 'created' });
-    } else {
-      idMessage = r.message;
+    // Online accounts rename on the server first (it enforces the same rules and rate limits).
+    if (account && game.players.registered && check.name !== game.players.name) {
+      const r = await game.players.rename(check.name);
+      if (!r.ok) {
+        driverMessage = r.message;
+        renderDriver();
+        return;
+      }
     }
-    if (menus.current === 'profile') renderIdentity();
+    game.store.setProfile(check.name, editAvatar || p.avatar);
+    game.audio.ui('confirm');
+    editing = false;
+    driverMessage = '';
+    menus.renderers.profile();
   });
-  profileBody.addEventListener('click', async e => {
-    const act = e.target.closest('[data-id-act]');
+  profileBody.addEventListener('click', e => {
+    const act = e.target.closest('[data-driver-act]');
+    const av = e.target.closest('.driver-edit [data-avatar]');
+    if (av) {
+      editAvatar = av.dataset.avatar;
+      renderDriver();
+      return;
+    }
     if (!act) return;
     game.audio.ui('click');
-    idMessage = '';
-    if (act.dataset.idAct === 'rename') idMode = 'rename';
-    else if (act.dataset.idAct === 'cancel') idMode = 'view';
-    else if (act.dataset.idAct === 'delete') {
-      if (!window.confirm('Delete your online profile? Your leaderboard entries are removed. Progress on this device is kept.')) return;
-      const r = await game.players.remove();
-      if (!r.ok) idMessage = r.message;
-      else game.ui.toast('Online profile deleted', 'Leaderboard entries removed', 'mission');
-    }
-    renderIdentity();
+    editing = act.dataset.driverAct === 'edit';
+    editAvatar = null;
+    driverMessage = '';
+    renderDriver();
   });
   document.querySelector('.profile-tabs').addEventListener('click', e => {
     const tab = e.target.closest('[data-ptab]');
@@ -303,29 +344,28 @@ export function registerMenuScreens(menus, game) {
       const secret = a.hidden && !a.unlocked;
       return `<div class="ach ${a.unlocked ? 'unlocked' : 'locked'}"><span class="ach-icon">${a.unlocked ? a.icon : secret ? '?' : a.icon}</span>
         <div><b>${secret ? '???' : escapeHtml(a.name)}</b><p>${secret ? 'Hidden achievement' : escapeHtml(a.desc)}</p>
-        ${a.unlocked ? `<p class="small" style="color:var(--green)">Unlocked · +${a.reward} CR</p>` : secret ? '' : `<div class="xp-bar"><i style="transform:scaleX(${a.progress})"></i></div>`}</div></div>`;
+        ${a.unlocked ? `<p class="small" style="color:var(--green)">Unlocked · +${fmt(a.reward)} CR</p>` : secret ? '' : `<div class="xp-bar"><i style="transform:scaleX(${a.progress})"></i></div>`}</div></div>`;
     }).join('');
   }
 
-  function renderStats() {
-    const s = save().stats;
-    const r = save().records;
+  // Real statistics only (endless runs have no wins, so there is no win count).
+  function renderStats(achievements) {
+    const s = state().stats;
+    const r = state().records;
     const fav = prog().favoriteCar();
     const tile = (label, value) => `<div class="stat-tile"><span class="hud-label">${label}</span><b>${value}</b></div>`;
     document.getElementById('stats-body').innerHTML = `
+      <h3 class="section-title">Best</h3>
+      <div class="stat-grid">
+        ${tile('Best score', fmt(r.score))}${tile('Top speed', `${fmt(r.topSpeed)} km/h`)}${tile('Best combo', `x${r.combo}`)}
+        ${tile('Longest run', km(r.distance))}${tile('Clean streak', km(r.cleanDistance))}${tile('Longest chase', `${fmt(r.chase)} s`)}
+      </div>
       <h3 class="section-title">Career</h3>
       <div class="stat-grid">
         ${tile('Total distance', km(s.distance))}${tile('Total races', fmt(s.races))}${tile('Play time', duration(s.playTime))}
-        ${tile('Overtakes', fmt(s.overtakes))}${tile('Near misses', fmt(s.nearMisses))}${tile('Insane misses', fmt(s.insaneMisses))}
-        ${tile('Perfect overtakes', fmt(s.perfectOvertakes))}${tile('Crashes', fmt(s.crashes))}${tile('Boost time', duration(s.boostTime))}
-        ${tile('Police escapes', fmt(s.policeEscapes))}${tile('Missions done', fmt(s.missionsCompleted))}${tile('Credits earned', fmt(s.creditsEarned))}
-        ${tile('Favorite car', fav ? escapeHtml(fav.name) : '—')}${tile('Cars unlocked', `${save().unlockedCars.length} / ${CARS.length}`)}
-      </div>
-      <h3 class="section-title">Personal records</h3>
-      <div class="stat-grid">
-        ${tile('Highest score', fmt(r.score))}${tile('Longest run', km(r.distance))}${tile('Top speed', `${fmt(r.topSpeed)} km/h`)}
-        ${tile('Best combo', `x${r.combo}`)}${tile('Most near misses', fmt(r.nearMisses))}${tile('Most overtakes', fmt(r.overtakes))}
-        ${tile('Longest chase', `${fmt(r.chase)} s`)}${tile('Clean streak', km(r.cleanDistance))}
+        ${tile('Cars owned', `${state().ownedCars.length} / ${CARS.length}`)}${tile('Achievements', `${achievements.filter(a => a.unlocked).length} / ${achievements.length}`)}${tile('Missions done', fmt(s.missionsCompleted))}
+        ${tile('Near misses', fmt(s.nearMisses))}${tile('Perfect overtakes', fmt(s.perfectOvertakes))}${tile('Police escapes', fmt(s.policeEscapes))}
+        ${tile('Credits earned', fmt(s.creditsEarned))}${tile('Crashes', fmt(s.crashes))}${tile('Favorite car', fav ? escapeHtml(fav.name) : '—')}
       </div>`;
   }
 
@@ -360,6 +400,9 @@ export function registerMenuScreens(menus, game) {
     const stats = browserOptedOut()
       ? '<div class="setting disabled"><span>Usage stats<small>Off — your browser asks not to be tracked</small></span></div>'
       : seg('analytics', 'Anonymous counts, never your name');
+    // Progress of an online account lives on the server; only guests can wipe it locally.
+    const reset = game.players.registered ? '' : '<button class="btn-small" data-reset="progress">Reset progress</button>';
+    const devReset = game.debug ? '<button class="btn-small" data-reset="dev">Dev: reset everything</button>' : '';
     document.getElementById('settings-body').innerHTML = `
       ${settingsNote ? `<p class="lb-note" role="status">${escapeHtml(settingsNote)}</p>` : ''}
       <h3 class="section-title">Controls</h3>
@@ -379,7 +422,7 @@ export function registerMenuScreens(menus, game) {
       <div class="settings-list">${seg('ghost')}${stats}</div>
       <div class="danger-zone">
         <button class="btn-small ghost" data-replay-tutorial>Replay tutorial</button>
-        <button class="btn-small" data-reset="1">Reset progress</button>
+        ${reset}${devReset}
       </div>`;
     settingsNote = '';
     clearInterval(tiltTimer);
@@ -447,16 +490,14 @@ export function registerMenuScreens(menus, game) {
       menus.renderers.settings();
       return;
     }
-    if (e.target.closest('[data-reset]')) {
-      if (window.confirm('Reset ALL progress, cars, credits and records? This cannot be undone.')) {
-        game.store.reset();
-        game.ghost.clear();
-        game.goals.ensureMissions();
-        game.applySelectedCar();
-        game.applySettings();
-        game.ui.setMuted(save().settings.muted);
-        menus.open('home');
-      }
+    const reset = e.target.closest('[data-reset]');
+    if (reset) {
+      const dev = reset.dataset.reset === 'dev';
+      const question = dev
+        ? 'DEVELOPMENT RESET: delete the driver profile, progression, garage, missions, statistics and the online link on this device?'
+        : 'Reset ALL progress, cars, credits and records? Your driver name is kept. This cannot be undone.';
+      if (!window.confirm(question)) return;
+      game.resetLocal(dev);
     }
   });
 }

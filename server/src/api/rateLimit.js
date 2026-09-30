@@ -57,5 +57,10 @@ export const RULES = {
   raceStart: { name: 'race-start', capacity: 40, perMs: 10 * 60_000 }, // per player
   raceFinish: { name: 'race-finish', capacity: 40, perMs: 10 * 60_000 }, // per player
   leaderboard: { name: 'leaderboard', capacity: 60, perMs: 60_000 },
+  sync: { name: 'sync', capacity: 60, perMs: 10 * 60_000 }, // per player
+  garage: { name: 'garage', capacity: 120, perMs: 10 * 60_000 }, // per player: purchases / upgrades
+  import: { name: 'import', capacity: 3, perMs: 24 * 60 * 60_000 }, // per player
+  recoveryCode: { name: 'recovery-code', capacity: 5, perMs: 24 * 60 * 60_000 }, // per player
+  recover: { name: 'recover', capacity: 10, perMs: 60 * 60_000 }, // per IP: code guessing
   events: { name: 'events', capacity: 30, perMs: 60_000 },
 };

@@ -125,7 +125,6 @@ export class SkillSystem {
 
     if (car.rare) {
       stats.legendPasses++;
-      stats.bonusCredits += RARE_TRAFFIC.PASS_CREDITS;
       this.award('LEGEND PASS', RARE_TRAFFIC.PASS_POINTS, COMBO.GAIN.legend, 'gold');
       g.audio.record();
     }

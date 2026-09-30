@@ -174,6 +174,22 @@
       </button>
     </header>
 
+    <!-- First launch: one short form, then straight into the first race. No email, no account. -->
+    <section id="screen-welcome" class="screen welcome-screen" aria-label="Create your driver">
+      <div class="welcome">
+        <h1 class="logo"><span class="logo-top">NIGHT</span><span class="logo-main">VECTOR</span></h1>
+        <form class="welcome-card" id="welcome-form" novalidate>
+          <span class="hud-label">Create your driver</span>
+          <input type="text" name="name" maxlength="32" autocomplete="nickname" autocapitalize="words" spellcheck="false"
+            placeholder="Driver name" aria-label="Driver name" required>
+          <div class="avatar-pick" id="welcome-avatars" role="radiogroup" aria-label="Avatar"></div>
+          <p class="id-msg" id="welcome-msg" role="alert"></p>
+          <button class="btn btn-primary btn-xl" type="submit">Start racing</button>
+          <small class="muted">Saved on this device. You can go online later from your profile.</small>
+        </form>
+      </div>
+    </section>
+
     <!-- Home: logo → PLAY. Works in portrait and landscape. -->
     <section id="screen-menu" class="screen menu-home active" aria-label="Main menu">
       <div class="home-brand">
@@ -194,7 +210,11 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v17M5 5h11l-2 3.5 2 3.5H5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>
             <span>Missions</span><small id="nav-missions-sub"></small>
           </button>
-          <button class="tile" data-nav="leaderboard">
+          <button class="tile" data-nav="profile">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5c.8-3.6 3.9-5.5 7.5-5.5s6.7 1.9 7.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span>Profile</span><small id="nav-profile-sub"></small>
+          </button>
+          <button class="tile wide" data-nav="leaderboard">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V13h4v7M10 20V8h4v12M16 20v-9h4v9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
             <span>Leaderboard</span><small>Global</small>
           </button>
@@ -236,6 +256,7 @@
             <span class="hud-label" id="garage-class">Class</span>
             <h3 id="garage-name">Car</h3>
             <p class="car-role" id="garage-role"></p>
+            <span class="state-chip" id="garage-state"></span>
             <div class="stat-bars" id="garage-stats"></div>
             <div class="car-action" id="garage-action"></div>
           </div>
@@ -296,6 +317,7 @@
           </div>
         </div>
         <div class="panel-body stats-body" id="profile-body">
+          <div class="driver-card" id="driver-card"></div>
           <div class="identity-card" id="identity-card"></div>
           <div id="stats-body"></div>
           <div class="ach-grid" id="ach-grid" hidden></div>
@@ -333,16 +355,27 @@
           <h2 class="res-title" id="results-title">Wrecked</h2>
           <div class="final-score" id="res-score">0</div>
           <div class="new-best" id="res-newbest">New record</div>
-          <p class="res-line" id="res-line"></p>
+          <div class="res-stats">
+            <div><b id="res-distance">0.00</b><span>km</span></div>
+            <div><b id="res-combo">x1</b><span>best combo</span></div>
+            <div><b id="res-speed">0</b><span>km/h max</span></div>
+          </div>
           <div class="online-line" id="res-online" role="status" hidden></div>
+          <!-- One concrete reason to race again: the next car (with progress) or mission -->
+          <div class="next-goal" id="res-goal" hidden></div>
         </div>
         <div class="res-side">
           <div class="rewards">
             <div class="reward"><b class="reward-total" id="res-credits">+0</b><span>Credits</span></div>
             <div class="reward"><b class="reward-total xp" id="res-xp">+0</b><span>XP</span></div>
           </div>
-          <div class="xp-row"><span class="level-badge small" id="res-level">1</span><div class="xp-bar big"><i id="res-xp-bar"></i></div></div>
+          <div class="xp-row"><span class="level-badge small" id="res-level">1</span><div class="xp-bar big"><i id="res-xp-bar"></i></div><small class="xp-text" id="res-xp-text"></small></div>
           <p class="level-up" id="res-levelup"></p>
+          <!-- A car's requirements were met this run: offered, never forced on the player -->
+          <div class="unlock-banner" id="res-unlock" hidden>
+            <div><span class="hud-label">New unlock available</span><b id="res-unlock-name"></b></div>
+            <button class="btn-small ghost" data-action="viewUnlock">View unlock</button>
+          </div>
           <ul class="result-events" id="res-events"></ul>
           <div class="res-actions">
             <button class="btn btn-primary btn-xl" data-action="restart">Play again</button>

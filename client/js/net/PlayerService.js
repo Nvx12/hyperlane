@@ -1,30 +1,20 @@
-// Optional online identity. Stored separately from the save so "reset progress" doesn't
-// orphan a leaderboard profile. Holds only: public id, display name, and the bearer token
-// the server issued (never shown to the player, never put in share links or URLs).
-const KEY = 'nightvector.identity';
+// Optional online account. Stored separately from the save (see storage.js KEYS.account):
+// public id, display name, the bearer token the server issued (never shown, never put in share
+// links or URLs), and sync bookkeeping. No email, no password, no personal data.
+import { validateDisplayName } from '../names.js';
+import { KEYS, readJson, writeJson, remove } from '../storage.js';
 
-export const NAME_MIN = 3;
-export const NAME_MAX = 16;
-
-// Mirrors the server rules for instant feedback; the server remains the authority.
-export function checkName(input) {
-  const name = String(input || '').trim().replace(/\s+/g, ' ');
-  if (name.length < NAME_MIN || name.length > NAME_MAX) return { ok: false, name, message: `Name must be ${NAME_MIN}–${NAME_MAX} characters.` };
-  if (!/^[A-Za-z0-9 _-]+$/.test(name)) return { ok: false, name, message: 'Use letters, numbers, spaces, - and _ only.' };
-  if (!/[A-Za-z0-9]/.test(name)) return { ok: false, name, message: 'Name needs at least one letter or number.' };
-  return { ok: true, name, message: '' };
-}
+// Same rules as the server (shared module); the server remains the authority.
+export const checkName = input => validateDisplayName(String(input || ''));
 
 function load() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const v = JSON.parse(raw);
-    if (v && typeof v.id === 'string' && typeof v.token === 'string' && typeof v.name === 'string') return v;
-  } catch {
-    /* storage unavailable or corrupt: act as signed out */
+  const v = readJson(KEYS.account);
+  if (v && typeof v.id === 'string' && typeof v.token === 'string' && typeof v.name === 'string') {
+    // Accounts from 1.1 predate cloud progression: offer their local progress once.
+    if (typeof v.needsImport !== 'boolean') v.needsImport = true;
+    return v;
   }
-  return null;
+  return null; // missing, corrupt or storage unavailable: act as signed out
 }
 
 export class PlayerService {
@@ -47,26 +37,68 @@ export class PlayerService {
     return this.identity ? this.identity.token : null;
   }
 
-  persist() {
-    try {
-      if (this.identity) localStorage.setItem(KEY, JSON.stringify(this.identity));
-      else localStorage.removeItem(KEY);
-    } catch {
-      /* private mode: identity lasts for this session only */
-    }
+  get needsImport() {
+    return Boolean(this.identity && this.identity.needsImport);
   }
 
-  // All methods resolve to { ok, message }.
+  get revision() {
+    return this.identity ? this.identity.revision || 0 : 0;
+  }
+
+  // Private mode / blocked storage: the account lasts for this session only.
+  persist() {
+    if (this.identity) writeJson(KEYS.account, this.identity);
+    else remove(KEYS.account);
+  }
+
+  setNeedsImport(value) {
+    if (!this.identity) return;
+    this.identity.needsImport = value;
+    this.persist();
+  }
+
+  setRevision(revision) {
+    if (!this.identity) return;
+    this.identity.revision = revision;
+    this.persist();
+  }
+
+  // All methods resolve to { ok, message, ... }.
+
+  // Guest → online account. The guest's progress is imported by the sync layer right after.
   async create(displayName) {
     const check = checkName(displayName);
     if (!check.ok) return check;
     return this.guard(async () => {
       const r = await this.api.request('POST', '/players', { body: { displayName: check.name } });
-      if (!r.ok) return { ok: false, message: r.error.message };
-      this.identity = { id: r.data.player.id, name: r.data.player.displayName, token: r.data.token };
+      if (!r.ok) return { ok: false, offline: r.offline, message: r.error.message };
+      this.identity = { id: r.data.player.id, name: r.data.player.displayName, token: r.data.token, needsImport: true, revision: r.data.revision };
       this.profile = r.data.player;
       this.persist();
       return { ok: true, message: '' };
+    });
+  }
+
+  // Sign in on this phone with a transfer code from another one. Resolves with the account's
+  // cloud progress, which replaces this phone's (the caller confirms that with the player).
+  async recover(code) {
+    return this.guard(async () => {
+      const r = await this.api.request('POST', '/auth/recover', { body: { code: String(code || '') } });
+      if (!r.ok) return { ok: false, offline: r.offline, message: r.status === 401 ? 'That code is not valid or was already used.' : r.error.message };
+      this.identity = { id: r.data.player.id, name: r.data.player.displayName, token: r.data.token, needsImport: false, revision: r.data.revision };
+      this.profile = r.data.player;
+      this.persist();
+      return { ok: true, message: '', progress: r.data.progress, revision: r.data.revision };
+    });
+  }
+
+  // A one-time code to continue this account on another phone.
+  async transferCode() {
+    if (!this.identity) return { ok: false, message: '' };
+    return this.guard(async () => {
+      const r = await this.api.request('POST', '/auth/recovery-code', { token: this.token });
+      if (!r.ok) return this.failed(r);
+      return { ok: true, message: '', code: r.data.code };
     });
   }
 
@@ -115,7 +147,7 @@ export class PlayerService {
   failed(r) {
     if (r.status === 401) {
       this.forget();
-      return { ok: false, message: 'Your online profile was not found. Create a new one to rejoin the leaderboard.' };
+      return { ok: false, message: 'Your online profile was not found. You are playing as a guest.' };
     }
     return { ok: false, offline: r.offline, message: r.error.message };
   }

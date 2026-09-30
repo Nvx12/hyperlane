@@ -247,11 +247,9 @@ export class EventDirector {
     g.ui.hideBanner();
     if (escaped) {
       stats.policeEscapes++;
-      stats.bonusCredits += POLICE.ESCAPE_CREDITS;
       g.score.addBonus(POLICE.ESCAPE_POINTS);
       g.ui.feed.push('POLICE ESCAPED', POLICE.ESCAPE_POINTS, PRIORITY.IMPORTANT, 'good');
       g.audio.escape();
-      if (stats.bestMultiplier >= 10) g.save.flags.phantom = true; // the secret car's condition
     } else {
       g.ui.feed.push('BUSTED', 0, PRIORITY.IMPORTANT, 'danger');
       g.score.breakCombo();

@@ -11,7 +11,7 @@ export class ScoreSystem {
     this.stats = {
       nearMisses: 0, insaneMisses: 0, overtakes: 0, perfectOvertakes: 0, pickups: 0, crashes: 0,
       topSpeed: 0, bestMultiplier: 1, boostTime: 0, highSpeedTime: 0, cleanDistance: 0, bestCleanDistance: 0,
-      chicanes: 0, legendPasses: 0, policeEscapes: 0, longestChase: 0, bonusCredits: 0,
+      chicanes: 0, legendPasses: 0, policeEscapes: 0, longestChase: 0, creditChips: 0,
     };
     this.reset();
   }

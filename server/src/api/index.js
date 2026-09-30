@@ -4,6 +4,7 @@ import { createPlayerStore, playerRoutes } from './players.js';
 import { raceRoutes } from './races.js';
 import { createLeaderboard, leaderboardRoutes } from './leaderboard.js';
 import { eventRoutes } from './events.js';
+import { createProgressStore, progressRoutes } from './progress.js';
 import { HttpError, sendError, sendJson, readJson, clientIp } from '../http.js';
 
 export const API_PREFIX = '/api/v1';
@@ -28,7 +29,8 @@ export async function createApi({ config, log, version, now = Date.now }) {
   const limiter = createRateLimiter({ scale: config.rateLimitScale, now });
   const players = createPlayerStore(db, now);
   const board = createLeaderboard(db, now);
-  const shared = { db, config, log, version, now, limiter, players, board };
+  const progress = createProgressStore(db, now);
+  const shared = { db, config, log, version, now, limiter, players, board, progress };
 
   const routes = [
     {
@@ -40,6 +42,7 @@ export async function createApi({ config, log, version, now = Date.now }) {
     },
     ...playerRoutes(shared),
     ...raceRoutes(shared),
+    ...progressRoutes(shared),
     ...leaderboardRoutes(shared),
     ...eventRoutes(shared),
   ].map(r => ({ ...r, match: compile(r.path) }));

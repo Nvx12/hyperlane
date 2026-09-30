@@ -1,62 +1,85 @@
 import { test, expect } from '@playwright/test';
+import { withDriver, watchErrors } from './helpers.js';
 
-// Collects console errors and failed requests so every test can assert a clean run.
-function watchErrors(page) {
-  const errors = [];
-  page.on('console', msg => {
-    if (msg.type() === 'error') errors.push(msg.text());
-  });
-  page.on('pageerror', err => errors.push(err.message));
-  return errors;
-}
+test('first launch: create a driver, and the first race starts with the tutorial', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/?debug');
+  await expect(page.locator('#loading')).toHaveCount(0);
+  await expect(page.locator('#screen-welcome')).toHaveClass(/active/);
+  await expect(page.locator('#menu-topbar')).not.toHaveClass(/visible/);
+  await page.locator('#welcome-form input[name="name"]').fill('<script>');
+  await page.locator('#welcome-form button[type="submit"]').click();
+  await expect(page.locator('#welcome-msg')).toContainText(/letters, numbers/);
+  await page.locator('#welcome-form input[name="name"]').fill('Zoë Racer');
+  await page.locator('[data-avatar="star"]').click();
+  await page.locator('#welcome-form button[type="submit"]').click();
+  await page.waitForFunction(() => window.nightVector.state === 'playing', null, { timeout: 10_000 });
+  await expect(page.locator('#coach')).toBeVisible({ timeout: 5000 });
+  await expect(page.locator('#coach-text')).toContainText(/steer/i);
+  await page.locator('.coach-skip').click();
+  await expect(page.locator('#coach')).toBeHidden();
+  const p = await page.evaluate(() => ({ profile: window.nightVector.save.profile, tutorial: window.nightVector.save.flags.tutorial }));
+  expect(p.profile.name).toBe('Zoë Racer');
+  expect(p.profile.avatar).toBe('star');
+  expect(p.tutorial).toBe(true);
+  expect(errors).toEqual([]);
+});
 
-// The first race runs the interactive tutorial; most tests want a normal race.
-async function skipTutorial(page) {
-  await page.addInitScript(() => {
-    try {
-      const save = JSON.parse(localStorage.getItem('nightvector.save') || 'null');
-      if (!save) localStorage.setItem('nightvector.save', JSON.stringify({ saveVersion: 2, flags: { tutorial: true } }));
-    } catch { /* ignore */ }
-  });
-}
-
-test('boots to the phone home screen with no errors', async ({ page }) => {
+test('home: PLAY plus Garage, Missions, Profile, Leaderboard and Settings', async ({ page }) => {
+  await withDriver(page);
   const errors = watchErrors(page);
   await page.goto('/');
-  await expect(page.locator('#loading')).toHaveCount(0);
   await expect(page.locator('#screen-menu')).toHaveClass(/active/);
   await expect(page.locator('.play-btn')).toBeVisible();
-  for (const label of ['Garage', 'Missions', 'Leaderboard', 'Settings']) {
+  for (const label of ['Garage', 'Missions', 'Profile', 'Leaderboard', 'Settings']) {
     await expect(page.locator('.home-tiles .tile', { hasText: label })).toBeVisible();
   }
-  // No desktop keyboard instructions anywhere in the UI
   await expect(page.locator('kbd')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
-test('one tap PLAY → race with touch controls → results', async ({ page }) => {
-  await skipTutorial(page);
+test('one tap PLAY → race → results with rewards and a next goal → one-tap restart', async ({ page }) => {
+  await withDriver(page);
   const errors = watchErrors(page);
   await page.goto('/?debug');
-  await expect(page.locator('#screen-menu')).toHaveClass(/active/);
   await page.locator('.play-btn').click();
-  await expect(page.locator('#hud')).not.toHaveClass(/hidden/);
   await expect(page.locator('#touch-controls')).toHaveClass(/enabled/);
   await page.waitForFunction(() => window.nightVector.state === 'playing');
   await page.waitForTimeout(3000); // acceleration is automatic
-  const distance = await page.evaluate(() => window.nightVector.score.distance);
-  expect(distance).toBeGreaterThan(50);
+  expect(await page.evaluate(() => window.nightVector.score.distance)).toBeGreaterThan(50);
 
   await page.evaluate(() => window.nightVector.beginCrashSequence(1));
   await expect(page.locator('#screen-results')).toHaveClass(/active/, { timeout: 15_000 });
-  await expect(page.locator('#res-score')).not.toHaveText('');
+  await expect(page.locator('#res-credits')).toHaveText(/^\+\d/);
+  await expect(page.locator('#res-goal')).toContainText(/Next car/i);
+  await expect(page.locator('#res-goal')).toContainText('Kestrel GT');
   await page.locator('#screen-results [data-action="restart"]').click();
   await page.waitForFunction(() => window.nightVector.state === 'countdown');
   expect(errors).toEqual([]);
 });
 
+test('in-race bonuses go to the feed (max three lines), never onto the road', async ({ page }) => {
+  await withDriver(page);
+  await page.goto('/?debug');
+  await page.locator('.play-btn').click();
+  await page.waitForFunction(() => window.nightVector.state === 'playing');
+  const lines = await page.evaluate(() => {
+    const g = window.nightVector;
+    for (let i = 0; i < 6; i++) g.skills.award('NEAR MISS', 100, 1, 'near');
+    g.skills.award('PERFECT OVERTAKE', 300, 2, 'gold');
+    g.skills.award('CHICANE', 400, 3, 'violet');
+    g.skills.award('INSANE', 500, 3, 'insane');
+    return g.ui.feed.visibleLines();
+  });
+  expect(lines.length).toBeLessThanOrEqual(3);
+  const box = await page.locator('#bonus-feed').boundingBox();
+  const vp = page.viewportSize();
+  expect(box.x + box.width).toBeLessThan(vp.width * 0.5);
+  expect(box.y).toBeLessThan(vp.height * 0.45);
+});
+
 test('pause button and resume countdown', async ({ page }) => {
-  await skipTutorial(page);
+  await withDriver(page);
   await page.goto('/?debug');
   await page.locator('.play-btn').click();
   await page.waitForFunction(() => window.nightVector.state === 'playing');
@@ -64,30 +87,33 @@ test('pause button and resume countdown', async ({ page }) => {
   await expect(page.locator('#screen-pause')).toHaveClass(/active/);
   await page.locator('#screen-pause [data-action="resume"]').click();
   await expect(page.locator('#screen-pause')).not.toHaveClass(/active/);
-  // The world stays frozen during the 3-2-1, then the race continues
   expect(await page.evaluate(() => window.nightVector.resumeTimer)).toBeGreaterThan(0);
   await page.waitForFunction(() => window.nightVector.resumeTimer === 0, null, { timeout: 5000 });
 });
 
-test('first race runs the interactive tutorial', async ({ page }) => {
+test('garage shows locked cars with their requirements; the legendary car stays secret', async ({ page }) => {
+  await withDriver(page);
   await page.goto('/?debug');
-  await page.locator('.play-btn').click();
-  await page.waitForFunction(() => window.nightVector.state === 'playing', null, { timeout: 10_000 });
-  await expect(page.locator('#coach')).toBeVisible({ timeout: 5000 });
-  await expect(page.locator('#coach-text')).toContainText(/steer/i);
-  await page.locator('.coach-skip').click();
-  await expect(page.locator('#coach')).toBeHidden();
-  expect(await page.evaluate(() => window.nightVector.save.flags.tutorial)).toBe(true);
+  await page.locator('.tile[data-nav="garage"]').click();
+  await expect(page.locator('#garage-state')).toHaveText(/Owned/i);
+  await page.locator('[data-car-step="1"]').click();
+  await expect(page.locator('#garage-name')).toHaveText('Kestrel GT');
+  await expect(page.locator('#garage-state')).toHaveText(/Locked/i);
+  await expect(page.locator('#garage-action')).toContainText('Driver level 3');
+  await expect(page.locator('#garage-action')).toContainText('2,500');
+  await page.evaluate(() => window.nightVector.menus.showCar('phantom'));
+  await expect(page.locator('#garage-name')).toHaveText('???');
+  await expect(page.locator('#garage-action')).toContainText(/Unknown/);
 });
 
-test('online profile and leaderboard', async ({ page }) => {
+test('profile: driver card; go online; leaderboard', async ({ page }) => {
+  await withDriver(page, `E2E ${Math.floor(Math.random() * 9000 + 1000)}`);
   await page.goto('/');
-  await page.locator('[data-nav="profile"]').first().click();
-  const name = `E2E ${Math.floor(Math.random() * 9000 + 1000)}`;
-  await page.locator('#identity-card input[name="name"]').fill(name);
-  await page.locator('#identity-card button[type="submit"]').click();
-  await expect(page.locator('#identity-card .id-name')).toHaveText(name);
-
+  await page.locator('.tile[data-nav="profile"]').click();
+  await expect(page.locator('#driver-card .id-name')).toContainText('E2E');
+  await expect(page.locator('#identity-card')).toContainText(/Guest profile/i);
+  await page.locator('[data-acct="create"]').click();
+  await expect(page.locator('#identity-card')).toContainText(/Online account/i, { timeout: 10_000 });
   await page.locator('#screen-profile [data-nav="home"]').click();
   await page.locator('.tile[data-nav="leaderboard"]').click();
   await expect(page.locator('#lb-body')).not.toContainText('Loading');

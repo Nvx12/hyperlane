@@ -1,5 +1,5 @@
 import { CAMERA, PLAYER, ROAD, GAME, BEAM, PERF, laneCenter } from './config.js';
-import { DIFFICULTY, DAMAGE, PICKUPS, SCORE } from './balance.js';
+import { DIFFICULTY, DAMAGE, PICKUPS, SCORE, CARS, UPGRADES } from './balance.js';
 import { clamp, lerp, rand, randInt, sign } from './utils.js';
 import { Camera } from './Camera.js';
 import { Road } from './Road.js';
@@ -13,14 +13,15 @@ import { PARTICLE } from './ParticleSystem.js';
 import { SkillSystem } from './SkillSystem.js';
 import { ScoreSystem } from './ScoreSystem.js';
 import { EventDirector } from './EventDirector.js';
-import { Goals, objectiveText } from './Goals.js';
+import { Goals } from './Goals.js';
+import { dateKey } from './Rng.js';
 import { AudioManager } from './AudioManager.js';
 import { InputManager } from './InputManager.js';
 import { UIManager } from './UIManager.js';
 import { Menus } from './Menus.js';
 import { registerMenuScreens } from './MenuScreens.js';
 import { SaveManager } from './SaveManager.js';
-import { Progression } from './Progression.js';
+import { Progression, getCar } from './Progression.js';
 import { resolveCustom } from './data/cosmetics.js';
 import { tipFor } from './data/tips.js';
 import { ENV } from './env.js';
@@ -28,6 +29,8 @@ import { AppShell } from './AppShell.js';
 import { ApiClient } from './net/ApiClient.js';
 import { PlayerService } from './net/PlayerService.js';
 import { RaceService } from './net/RaceService.js';
+import { SyncManager } from './net/SyncManager.js';
+import { AccountPanel } from './AccountPanel.js';
 import { Ghost } from './Ghost.js';
 import { Analytics } from './net/Analytics.js';
 import { takeChallengeFromUrl, shareRun } from './Share.js';
@@ -77,7 +80,7 @@ export class Game {
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.store = new SaveManager();
     this.progression = new Progression(this.store);
-    this.goals = new Goals(this.store, this.progression);
+    this.goals = new Goals(this.progression);
 
     this.bank = createSpriteBank();
     this.camera = new Camera();
@@ -102,6 +105,7 @@ export class Game {
       restart: () => this.restartRace(),
       menu: () => this.quitToMenu(),
       garage: () => this.enterMenu('garage'),
+      viewUnlock: () => this.viewUnlock(),
       upgradeCar: () => {
         this.enterMenu('garage');
         this.menus.openSheet('upgrades');
@@ -121,6 +125,11 @@ export class Game {
     this.api = new ApiClient();
     this.players = new PlayerService(this.api);
     this.race = new RaceService(this.api, this.players);
+    // Local save → SyncManager → API → database. Never used during a race frame.
+    this.sync = new SyncManager({ api: this.api, players: this.players, store: this.store, progression: this.progression, isBusy: () => this.isRaceActive() });
+    this.progression.onOperation = (type, payload) => this.sync.enqueue(type, payload);
+    this.sync.onNotice = (title, text) => this.ui.toast(title, text, 'mission');
+    this.sync.onChange = () => this.onProgressReplaced();
     this.ghost = new Ghost();
     this.analytics = new Analytics(this.api, () => this.save.settings);
     // App-shell events → analytics (coarse, no identifiers).
@@ -134,6 +143,7 @@ export class Game {
     this.lastRun = null;
     this.api.onStatus(() => this.shell.syncNetwork());
     this.menus = new Menus(this);
+    this.accountUi = new AccountPanel(this);
     registerMenuScreens(this.menus, this);
 
     this.input.bindTouchControls(document.getElementById('touch-controls'));
@@ -223,6 +233,9 @@ export class Game {
         if (this.state !== STATE.PAUSED) this.audio.resume();
       }
     });
+    window.addEventListener('online', () => {
+      if (!this.isRaceActive()) this.sync.flush();
+    });
     window.addEventListener('pagehide', () => {
       this.pause();
       this.store.save();
@@ -249,8 +262,14 @@ export class Game {
     if (this.tutorial) this.tutorial.abort();
   }
 
+  // The whole local save (profile, settings, device flags) …
   get save() {
     return this.store.data;
+  }
+
+  // … and the progression document inside it (credits, XP, cars, missions, records, stats).
+  get progress() {
+    return this.store.data.progress;
   }
 
   isPlaying() {
@@ -258,7 +277,7 @@ export class Game {
   }
 
   bestScore() {
-    return this.save.records.score;
+    return this.progress.records.score;
   }
 
   // Applies the garage car: handling profile, sprites and cosmetics. Called at startup and
@@ -304,10 +323,10 @@ export class Game {
     this.analytics.track('session_start', {
       pwa: this.shell.pwa.isStandalone,
       touch: this.ui.isTouchDevice(),
-      returning: this.save.stats.races > 0,
+      returning: this.progress.stats.races > 0,
     });
     if (this.challenge) this.analytics.track('challenge_opened');
-    this.goals.ensureMissions();
+    this.goals.missions();
     this.applySelectedCar();
     this.applySettings();
     this.applyResize();
@@ -407,7 +426,8 @@ export class Game {
   }
 
   enterMenu(screen = 'home') {
-    if (getEnvironment(this.selectedEnv).level > this.save.level) this.selectedEnv = 'neon';
+    if (!this.save.profile) screen = 'welcome'; // first launch: create the driver before anything else
+    if (getEnvironment(this.selectedEnv).level > this.progress.level) this.selectedEnv = 'neon';
     this.resetWorld();
     this.state = STATE.MENU;
     this.player.speed = GAME.MENU_KMH / 3.6;
@@ -420,9 +440,8 @@ export class Game {
     this.menus.open(screen);
     this.shell.refreshUpdateBanner();
     this.shell.pingServer();
-    this.race.flush().then(n => {
-      if (n) this.ui.toast('Leaderboard', `${n} offline run${n > 1 ? 's' : ''} submitted`, 'unlock');
-    });
+    // Menus are the time to talk to the server: send queued progress, then fetch the cloud copy.
+    this.sync.flush().then(() => this.sync.pull());
   }
 
   startRace() {
@@ -443,7 +462,7 @@ export class Game {
     const ch = this.challenge && this.challenge.accepted ? this.challenge : null;
     // First race: the interactive tutorial starts at GO instead of a text tip.
     this.ui.showRaceIntro(ch ? `Challenge: beat ${ch.name}'s ${ch.score.toLocaleString('en-US')}`
-      : !this.save.flags.tutorial ? 'GET READY' : tipFor(this.save.stats.races));
+      : !this.save.flags.tutorial ? 'GET READY' : tipFor(this.progress.stats.races));
     this.audio.setMusicMode('race');
     this.shell.refreshUpdateBanner();
     this.shell.checkOrientation();
@@ -498,13 +517,10 @@ export class Game {
     this.ui.hideRaceIntro();
   }
 
-  noteUnlock(car, events) {
-    events.push(['unlock', `NEW CAR UNLOCKED · ${car.name}`]);
-    this.analytics.track('car_unlocked', { car: car.id });
-  }
-
   // Coarse run summary for analytics: rounded numbers and ids of game content only.
-  trackRunEnd(run, goalEvents, newLevel) {
+  trackRunEnd(run, result) {
+    const goalEvents = result.events;
+    const newLevel = result.levelsGained.length ? result.levelAfter.level : 0;
     const a = this.analytics;
     a.track('race_end', {
       car: this.car.id,
@@ -520,6 +536,7 @@ export class Game {
     if (count('achievement')) a.track('achievement', { count: count('achievement') });
     if (goalEvents.some(([, text]) => text.startsWith('DAILY'))) a.track('daily_complete');
     if (newLevel) a.track('level_up', { level: newLevel });
+    for (const car of result.newlyAvailable) a.track('car_available', { car });
   }
 
   async shareLastRun() {
@@ -544,7 +561,7 @@ export class Game {
     ch.accepted = true;
     this.analytics.track('challenge_accepted');
     // Race the same route when it's unlocked; otherwise the current one (score is score).
-    if (getEnvironment(ch.env).level <= this.save.level) this.selectedEnv = ch.env;
+    if (getEnvironment(ch.env).level <= this.progress.level) this.selectedEnv = ch.env;
     this.startRace();
   }
 
@@ -635,6 +652,43 @@ export class Game {
     }
   }
 
+  // ---------------------------------------------------------------- dev / QA hooks
+  // Reachable only through window.nightVector, which exists only with ?debug (never in production).
+
+  carIds() {
+    return CARS.map(c => c.id);
+  }
+
+  // Drives a car stock (maxed = false) or with every upgrade at its top level, bypassing
+  // ownership — for the balancing sampler (tools/balance/sample-runs.mjs) only.
+  devSetCar(id, maxed) {
+    const p = this.progress;
+    if (!p.ownedCars.includes(id)) p.ownedCars.push(id);
+    if (!p.cars[id]) p.cars[id] = this.progression.carState(id);
+    p.selectedCar = id;
+    for (const key of Object.keys(UPGRADES)) p.cars[id].upgrades[key] = maxed ? UPGRADES[key].steps.length : 0;
+    this.applySelectedCar();
+  }
+
+  // Settings → Reset progress (guest), or the debug-only development reset (all: a brand-new
+  // first launch — profile, progression, garage, missions, statistics and the online link).
+  resetLocal(all) {
+    if (all) {
+      this.store.resetAll();
+      this.players.forget();
+      this.sync.clear();
+    } else {
+      this.store.resetProgress();
+    }
+    this.ghost.clear();
+    this.goals.missions();
+    this.applySelectedCar();
+    this.applySettings();
+    this.ui.setMuted(this.save.settings.muted);
+    this.menus.garageCarId = null;
+    this.enterMenu();
+  }
+
   toggleMute() {
     const muted = !this.audio.muted;
     this.save.settings.muted = muted;
@@ -696,105 +750,105 @@ export class Game {
     return v;
   }
 
-  // Settles a run: records, lifetime stats, goals, rewards, unlocks. One save write.
+  // Everything the progression engine and the server need to know about a finished run —
+  // summary numbers only, never a frame-by-frame recording.
+  runSummary() {
+    const s = this.score.stats;
+    const r1 = v => Math.round(v * 10) / 10;
+    return {
+      carId: this.car.id,
+      envId: this.selectedEnv,
+      score: Math.floor(this.score.score),
+      distance: r1(this.score.distance),
+      durationMs: Math.round(this.runTime * 1000),
+      topSpeed: r1(s.topSpeed),
+      bestMultiplier: s.bestMultiplier,
+      nearMisses: s.nearMisses,
+      insaneMisses: s.insaneMisses,
+      overtakes: s.overtakes,
+      perfectOvertakes: s.perfectOvertakes,
+      chicanes: s.chicanes,
+      pickups: s.pickups,
+      creditChips: s.creditChips,
+      crashes: s.crashes,
+      policeEscapes: s.policeEscapes,
+      legendPasses: s.legendPasses,
+      longestChase: Math.round(s.longestChase),
+      boostTime: r1(s.boostTime),
+      highSpeedTime: r1(s.highSpeedTime),
+      bestCleanDistance: Math.round(s.bestCleanDistance),
+    };
+  }
+
+  // Settles a run through the progression engine (records, stats, rewards, missions,
+  // achievements, level, unlocks) — locally at once; the sync layer confirms it online.
   finishRun() {
     this.runSettled = true;
-    const prog = this.progression;
-    const save = this.save;
-    const run = { ...this.liveRun() };
-    if (run.bestMultiplier >= 10 && run.policeEscapes > 0) save.flags.phantom = true;
+    const run = this.runSummary();
+    const day = dateKey();
+    const result = this.progression.settleRun(run, day); // local first: never waits for the network
+    const online = this.sync.submitRace(run, day, this.race.takeSession());
 
-    // Ranked submission (validated server-side; local rewards never depend on it).
-    const online = this.race.submit({
-      score: run.score,
-      distance: Math.round(run.distance * 10) / 10,
-      topSpeed: Math.round(run.topSpeed * 10) / 10,
-      bestCombo: run.bestMultiplier,
-      durationMs: Math.round(this.runTime * 1000),
-      nearMisses: run.nearMisses,
-      overtakes: run.overtakes,
-      perfectOvertakes: run.perfectOvertakes,
-    });
-
-    const beaten = prog.updateRecords(run);
-    prog.addLifetimeStats(run, this.car.id, this.runTime);
     const events = [];
-    for (const car of prog.checkUnlocks()) this.noteUnlock(car, events);
     this.lastRun = { score: run.score, distance: run.distance, topSpeed: run.topSpeed, combo: run.bestMultiplier, env: this.selectedEnv };
     const ch = this.challenge;
     if (ch && ch.accepted) {
       if (run.score > ch.score) {
-        events.unshift(['unlock', `CHALLENGE WON · you beat ${ch.name}'s ${ch.score.toLocaleString('en-US')}`]);
+        events.push(['unlock', `CHALLENGE WON · you beat ${ch.name}'s ${ch.score.toLocaleString('en-US')}`]);
         this.challenge = null;
       } else {
         events.push(['mission', `Challenge · ${(ch.score - run.score).toLocaleString('en-US')} short of ${ch.name}`]);
       }
     }
+    for (const e of result.events) events.push(e);
     const hadGhost = Boolean(this.ghost.best);
     if (this.ghost.finishRun(run.score, this.car.id) && hadGhost && this.ghost.enabled) {
       events.push(['unlock', 'You beat your ghost — this run is the new one']);
     }
+    this.trackRunEnd(run, result);
 
-    const rewards = prog.runRewards(run);
-    const goals = this.goals.settle(run);
-    const credits = rewards.credits.concat(goals.credits);
-    const xp = rewards.xp + goals.xp;
-    for (const e of goals.events) events.push(e);
-    const creditsTotal = credits.reduce((sum, [, v]) => sum + v, 0);
-    save.credits += creditsTotal;
-    save.stats.creditsEarned += creditsTotal;
-
-    const before = prog.levelProgress();
-    const levelsGained = prog.addXp(xp);
-    const after = prog.levelProgress();
-    for (const car of prog.checkUnlocks()) this.noteUnlock(car, events);
-    if (levelsGained.length) events.unshift(['unlock', `LEVEL ${after.level} · ${after.title}`]);
-    this.store.save();
-    this.trackRunEnd(run, goals.events, levelsGained.length ? after.level : 0);
-
-    const isRecord = key => beaten.includes(key);
-    if (levelsGained.length) this.audio.levelUp();
-    else if (isRecord('score')) this.audio.record();
-    const wrecked = this.player.health <= 0;
+    const newBest = result.beaten.includes('score');
+    if (result.levelsGained.length) this.audio.levelUp();
+    else if (newBest) this.audio.record();
     const up = this.progression.nextUpgrade();
-    // One "why play again" line when there's room (upgrades have their own lit-up button).
-    const hint = this.nextGoal(run, isRecord('score'));
-    if (hint && events.length < 3) events.push(['mission', hint]);
+    const unlockId = result.newlyAvailable[0];
+    this.pendingUnlock = unlockId || null;
     return {
       online,
-      title: wrecked ? 'Wrecked' : 'Run complete',
-      wrecked,
+      title: this.player.health <= 0 ? 'Wrecked' : 'Run complete',
+      wrecked: this.player.health <= 0,
       score: run.score,
-      newBest: isRecord('score'),
-      line: `${(run.distance / 1000).toFixed(2)} km · ${Math.round(run.topSpeed)} km/h · x${run.bestMultiplier} combo`,
-      creditsTotal,
-      xp,
-      level: after,
-      levelsGained,
-      xpStart: before.xp / before.need,
-      xpEnd: after.xp / after.need,
+      newBest,
+      distance: run.distance,
+      bestCombo: run.bestMultiplier,
+      topSpeed: run.topSpeed,
+      creditsTotal: result.creditsTotal,
+      xp: result.xp,
+      level: result.levelAfter,
+      levelsGained: result.levelsGained,
+      xpStart: result.levelBefore.need ? result.levelBefore.xp / result.levelBefore.need : 1,
+      xpEnd: result.levelAfter.need ? result.levelAfter.xp / result.levelAfter.need : 1,
       events,
+      unlock: unlockId ? { id: unlockId, name: getCar(unlockId).name } : null,
+      goal: this.progression.nextGoal(),
       upgradeReady: Boolean(up && up.affordable),
     };
   }
 
-  // The closest concrete goal for the next run: a car unlock, a mission, or the best score.
-  nextGoal(run, newBest) {
-    const fmt = n => Math.floor(n).toLocaleString('en-US');
-    const car = this.progression.nextCar();
-    if (car && car.ratio >= 0.4) return `Next: ${car.car.name} — ${car.text}`;
-    let best = null;
-    let bestRatio = -1;
-    for (const m of this.save.missions.active) {
-      const r = Math.min(1, this.goals.missionValue(m, null) / m.target);
-      if (r > bestRatio) {
-        bestRatio = r;
-        best = m;
-      }
-    }
-    if (best) return `Mission: ${objectiveText(best.type, best.target)}`;
-    if (!newBest && this.save.records.score > 0) return `Best to beat: ${fmt(this.save.records.score)}`;
-    return car ? `Next: ${car.car.name} — ${car.text}` : null;
+  // The cloud copy of the progress replaced the local one (sync, pull, account recovery).
+  onProgressReplaced() {
+    this.applySelectedCar();
+    if (this.state !== STATE.MENU) return;
+    this.menus.refreshTopbar();
+    const render = this.menus.renderers[this.menus.current];
+    if (render && !this.menus.sheetOpen) render();
+  }
+
+  // Results → VIEW UNLOCK: the garage, on the car that just became available.
+  viewUnlock() {
+    const id = this.pendingUnlock;
+    this.enterMenu('garage');
+    if (id) this.menus.showCar(id);
   }
 
   // ---------------------------------------------------------------- update
@@ -1017,7 +1071,7 @@ export class Game {
       this.skills.award('REPAIR', SCORE.PICKUP, 1, 'good');
       this.effects.flash.pickup = 1;
     } else if (type === PICKUP_CREDITS) {
-      stats.bonusCredits += PICKUPS.CREDIT_CHIP_VALUE;
+      stats.creditChips++; // paid out at the finish (progression/config.js RUN_CREDITS)
       this.skills.award('CREDIT CHIP', SCORE.PICKUP * 2, 1, 'gold');
     } else {
       p.addBoost(PICKUPS.BOOST_AMOUNT);
@@ -1142,7 +1196,7 @@ export class Game {
     const s = this.score;
     const d = this.hudData;
     d.score = s.score;
-    d.best = Math.max(this.save.records.score, Math.floor(s.score));
+    d.best = Math.max(this.progress.records.score, Math.floor(s.score));
     d.speed = p.speed * 3.6;
     d.distance = s.distance;
     d.mult = s.multiplier;

@@ -26,28 +26,25 @@ export const OBJECTIVES = {
   score: { short: 'SCORE', stat: r => r.score, text: n => `Score ${n.toLocaleString('en-US')} in one run`, single: true },
 };
 
-// Missions: targets scale gently with driver level. minLevel keeps early missions approachable.
+// Missions: medium-term goals. Cumulative ones take about five typical runs; single-run ones
+// are a stretch (roughly one run in five). Targets come from recorded runs (tools/balance) and
+// scale gently with driver level. Rewards are in progression/config.js (MISSION_REWARDS).
 export const MISSION_TEMPLATES = [
-  { type: 'nearMisses', target: lv => nice(6 + lv * 1.5) },
-  { type: 'overtakes', target: lv => nice(20 + lv * 4) },
-  { type: 'perfect', target: lv => nice(3 + lv * 0.6) },
-  { type: 'chicanes', target: lv => nice(1 + lv * 0.25), minLevel: 2 },
-  { type: 'insane', target: lv => nice(1 + lv * 0.2), minLevel: 2 },
-  { type: 'boostTime', target: lv => nice(12 + lv * 2) },
-  { type: 'police', target: lv => (lv < 12 ? 1 : 2), minLevel: 3 },
-  { type: 'clean', target: lv => nice(2 + lv * 0.35) },
-  { type: 'runDistance', target: lv => nice(3 + lv * 0.4) },
-  { type: 'speed', target: lv => Math.min(340, 250 + nice(lv * 5)) },
-  { type: 'hold', target: lv => nice(10 + lv * 1.2) },
-  { type: 'combo', target: lv => (lv < 3 ? 3 : lv < 8 ? 5 : lv < 15 ? 8 : 10) },
-  { type: 'score', target: lv => nice(15000 + lv * 5000) },
+  { type: 'nearMisses', target: lv => nice(18 + lv * 1.5) },
+  { type: 'overtakes', target: lv => nice(350 + lv * 20) },
+  { type: 'perfect', target: lv => nice(24 + lv * 1.5) },
+  { type: 'distance', target: lv => nice(30 + lv * 2) },
+  { type: 'chicanes', target: lv => nice(12 + lv), minLevel: 2 },
+  { type: 'insane', target: lv => nice(5 + lv * 0.4), minLevel: 2 },
+  { type: 'boostTime', target: lv => nice(60 + lv * 5) },
+  { type: 'police', target: lv => (lv < 12 ? 2 : 3), minLevel: 3 },
+  { type: 'clean', target: lv => nice(5 + lv * 0.15) },
+  { type: 'runDistance', target: lv => nice(9 + lv * 0.3) },
+  { type: 'speed', target: lv => Math.min(340, 250 + nice(lv * 4)) },
+  { type: 'hold', target: lv => nice(60 + lv * 2) },
+  { type: 'combo', target: lv => (lv < 4 ? 5 : lv < 12 ? 8 : 10) },
+  { type: 'score', target: lv => nice(60000 + lv * 8000) },
 ];
-
-export const MISSION_REWARD = {
-  CREDITS: lv => 120 + lv * 20,
-  XP: lv => 80 + lv * 12,
-  ACTIVE: 3,
-};
 
 // Daily challenge goal pool (targets rolled from the date seed).
 export const DAILY_GOALS = [
@@ -61,4 +58,3 @@ export const DAILY_GOALS = [
   { type: 'boostTime', range: [30, 60] },
 ];
 
-export const DAILY_REWARD = { credits: 1000, xp: 400 };

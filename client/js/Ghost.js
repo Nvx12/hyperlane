@@ -1,24 +1,20 @@
 import { CAMERA, ROAD } from './config.js';
+import { KEYS, readJson, writeJson, remove } from './storage.js';
 
 // Personal-best ghost: a translucent replay of the player's best-scoring run. It never
 // collides and never affects traffic — it's only drawn. Recorded as distance/lateral samples
 // every 0.25 s of race time (ints: decimeters and centimeters), so a 15-minute run is ~3600
 // samples, well under 40 KB in localStorage.
-const KEY = 'nightvector.ghost';
 const SAMPLE = 0.25;
 const MAX_SAMPLES = 3600;
 const MIN_SAMPLES = 40; // runs shorter than 10 s don't replace the ghost
 const GHOST_LENGTH = 4.4;
 
 function load() {
-  try {
-    const g = JSON.parse(localStorage.getItem(KEY) || 'null');
-    if (g && g.v === 1 && Array.isArray(g.d) && Array.isArray(g.x) && g.d.length === g.x.length && g.d.length >= MIN_SAMPLES
-      && Number.isFinite(g.score)) return g;
-  } catch {
-    /* corrupt or unavailable: no ghost */
-  }
-  return null;
+  const g = readJson(KEYS.ghost);
+  if (g && g.v === 1 && Array.isArray(g.d) && Array.isArray(g.x) && g.d.length === g.x.length && g.d.length >= MIN_SAMPLES
+    && Number.isFinite(g.score)) return g;
+  return null; // missing, corrupt or storage unavailable: no ghost
 }
 
 export class Ghost {
@@ -74,21 +70,13 @@ export class Ghost {
   finishRun(score, carId) {
     if (this.recD.length < MIN_SAMPLES || score <= this.bestScore) return false;
     this.best = { v: 1, score, car: carId, d: this.recD.slice(), x: this.recX.slice() };
-    try {
-      localStorage.setItem(KEY, JSON.stringify(this.best));
-    } catch {
-      /* quota or private mode: ghost lasts for this session */
-    }
+    writeJson(KEYS.ghost, this.best); // quota or private mode: the ghost lasts for this session
     return true;
   }
 
   clear() {
     this.best = null;
     this.active = null;
-    try {
-      localStorage.removeItem(KEY);
-    } catch {
-      /* ignore */
-    }
+    remove(KEYS.ghost);
   }
 }

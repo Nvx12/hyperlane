@@ -1,4 +1,5 @@
 import { BonusFeed, PRIORITY } from './BonusFeed.js';
+import { progressText } from './progression/engine.js';
 
 const TOAST_LIMIT = 2; // phone screens: never stack more than two
 const TOAST_TIME = 2800;
@@ -125,9 +126,9 @@ export class UIManager {
   setTopbar(p) {
     const $ = this.$;
     $('top-level').textContent = p.level;
-    $('top-title').textContent = p.title;
-    $('top-xp').style.transform = `scaleX(${Math.min(1, p.xp / p.need)})`;
-    $('top-xp-text').textContent = `${this.format(p.xp)} / ${this.format(p.need)} XP`;
+    $('top-title').textContent = p.name || p.title;
+    $('top-xp').style.transform = `scaleX(${p.need ? Math.min(1, p.xp / p.need) : 1})`;
+    $('top-xp-text').textContent = p.max ? `${p.title} · MAX` : `${p.title} · ${this.format(p.xp)} / ${this.format(p.need)} XP`;
     $('top-credits').textContent = this.format(p.credits);
   }
 
@@ -376,13 +377,22 @@ export class UIManager {
     title.classList.toggle('ok', !r.wrecked);
     $('res-score').textContent = this.format(r.score);
     $('res-newbest').classList.toggle('visible', r.newBest);
-    $('res-line').textContent = r.line;
+    $('res-distance').textContent = (r.distance / 1000).toFixed(2);
+    $('res-combo').textContent = `x${r.bestCombo}`;
+    $('res-speed').textContent = this.format(r.topSpeed);
     $('res-credits').textContent = `+${this.format(r.creditsTotal)}`;
     $('res-xp').textContent = `+${this.format(r.xp)}`;
     $('res-level').textContent = r.level.level;
-    $('res-levelup').textContent = r.levelsGained.length ? `LEVEL UP · ${r.level.title}` : '';
+    $('res-xp-text').textContent = r.level.max ? 'MAX' : `${this.format(r.level.xp)} / ${this.format(r.level.need)}`;
+    $('res-levelup').textContent = r.levelsGained.length ? `LEVEL UP · ${r.level.level} · ${r.level.title}` : '';
     $('res-levelup').classList.toggle('active', r.levelsGained.length > 0);
-    $('res-events').innerHTML = r.events.slice(0, 3).map(([kind, text]) => `<li class="${kind}">${escapeHtml(text)}</li>`).join('');
+    // A new unlock is offered (VIEW UNLOCK), never forced; otherwise up to two events.
+    const unlock = $('res-unlock');
+    unlock.hidden = !r.unlock;
+    if (r.unlock) $('res-unlock-name').textContent = r.unlock.name;
+    const events = r.events.filter(([, text]) => !text.startsWith('NEW CAR AVAILABLE') && !text.startsWith('LEVEL '));
+    $('res-events').innerHTML = events.slice(0, r.unlock ? 1 : 2).map(([kind, text]) => `<li class="${kind}">${escapeHtml(text)}</li>`).join('');
+    this.renderGoal($('res-goal'), r.goal);
     const up = $('res-upgrade');
     up.innerHTML = r.upgradeReady ? 'Upgrade car<span class="badge">READY</span>' : 'Upgrade car';
     this.countUp($('res-score'), r.score);
@@ -400,6 +410,18 @@ export class UIManager {
       bar.style.transform = `scaleX(${r.xpEnd})`;
     }, 900);
     this.showScreen('results');
+  }
+
+  // "Next car / next mission" card with up to three progress lines.
+  renderGoal(el, goal) {
+    el.hidden = !goal;
+    if (!goal) return;
+    const kicker = goal.kind === 'car' ? (goal.state === 'available' ? 'Next car · ready to buy' : 'Next car') : 'Next mission';
+    const lines = goal.lines.filter(l => !l.met).slice(0, 3);
+    const shown = lines.length ? lines : goal.lines.slice(-1);
+    el.innerHTML = `<span class="hud-label">${kicker}</span><b>${escapeHtml(goal.title)}</b>${shown.map(l => `
+      <div class="goal-line ${l.met ? 'met' : ''}"><span>${escapeHtml(l.kind === 'credits' ? 'Credits' : l.text)}</span><em>${escapeHtml(progressText(l))}</em>
+        <div class="xp-bar"><i style="transform:scaleX(${Math.min(1, l.value / Math.max(1, l.target))})"></i></div></div>`).join('')}`;
   }
 
   // Rolls a number up to its final value (results screen). Uses its own short rAF chain.

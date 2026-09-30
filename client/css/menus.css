@@ -132,7 +132,9 @@
 .play-btn > span { font-family: var(--font-display); font-weight: 900; font-size: clamp(24px, 8vmin, 38px); letter-spacing: 0.24em; margin-right: -0.24em; }
 .play-btn small { font-size: 12px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.85; }
 .play-btn:active { transform: scale(0.98); filter: brightness(1.12); }
-.home-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(8px, 2vmin, 12px); }
+/* Five destinations: Garage · Missions · Profile, then Leaderboard (wide) · Settings. */
+.home-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(8px, 2vmin, 12px); }
+.tile.wide { grid-column: span 2; }
 .tile {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -313,6 +315,7 @@
 .car-dots { position: absolute; left: 0; right: 0; bottom: 8px; display: flex; justify-content: center; gap: 6px; }
 .car-dots i { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.22); }
 .car-dots i.locked { background: rgba(255,255,255,0.08); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.22); }
+.car-dots i.available { background: transparent; box-shadow: inset 0 0 0 2px var(--amber); }
 .car-dots i.active { background: var(--pink); transform: scale(1.25); }
 .car-info {
   display: flex;
@@ -370,7 +373,7 @@
 .style-list { display: flex; flex-direction: column; gap: 14px; }
 .style-row .hud-label { margin-bottom: 6px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.opt { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 10px; font-size: 13px; font-weight: 600; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); }
+.opt { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; min-width: 44px; padding: 6px 10px; font-size: 13px; font-weight: 600; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); }
 .opt i { width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 0 8px rgba(255,255,255,0.2); }
 .opt small { color: var(--amber); font-size: 10px; }
 .opt.active { border-color: var(--cyan); background: rgba(34,230,255,0.16); }
@@ -481,7 +484,7 @@
 .final-score { font-family: var(--font-display); font-weight: 900; font-size: clamp(38px, 14vmin, 76px); line-height: 1.05; color: #fff; text-shadow: 0 0 24px rgba(255,45,149,0.65); font-variant-numeric: tabular-nums; }
 .new-best { display: none; margin: 4px auto 0; width: max-content; padding: 4px 12px; font-family: var(--font-display); font-size: 12px; font-weight: 700; letter-spacing: 0.26em; text-transform: uppercase; color: #06030d; background: var(--green); border-radius: 8px; }
 .new-best.visible { display: block; animation: mult-pop 0.5s cubic-bezier(.2,.9,.3,1.4); }
-.res-line { margin-top: 8px; font-size: clamp(13px, 3.8vmin, 16px); font-weight: 700; letter-spacing: 0.06em; color: #cfcbe8; }
+
 .online-line { margin-top: 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .online-line.pending { opacity: 0.7; }
 .online-line.ranked { color: var(--cyan); }
@@ -518,3 +521,72 @@
 /* ================================================================== controller focus (gamepad) */
 
 body.pad-active button:focus, body.pad-active input:focus { outline: 3px solid var(--cyan); outline-offset: 2px; }
+
+/* ================================================================== progression & profile (v1.2) */
+
+/* Garage: state chip, requirements with progress, buy flow */
+.state-chip { display: inline-block; align-self: flex-start; margin: -6px 0 8px; padding: 2px 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; border-radius: 5px; }
+.state-chip.owned { color: #06030d; background: var(--green); }
+.state-chip.available { color: #06030d; background: var(--amber); }
+.state-chip.locked { color: var(--muted); background: rgba(255,255,255,0.1); }
+.spec-line { font-size: 13px; font-weight: 700; color: #d6d3f0; letter-spacing: 0.04em; }
+.unlock-req .req { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: baseline; margin-top: 6px; font-size: 13px; font-weight: 700; }
+.unlock-req .req em { font-style: normal; font-family: var(--font-display); font-size: 12px; color: var(--muted); }
+.unlock-req .req .xp-bar { grid-column: 1 / -1; margin-top: 3px; }
+.unlock-req .req.met span, .unlock-req .req.met em { color: var(--green); }
+.unlock-req .req.price em { color: var(--amber); }
+.unlock-req.available { border-color: rgba(255,194,71,0.6); }
+.unlock-req .btn { width: 100%; margin-top: 8px; }
+.btn.confirm, .opt.confirm { box-shadow: 0 0 0 2px var(--amber), 0 6px 22px rgba(255,194,71,0.35); }
+.sheet-note { margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--muted); }
+
+/* Results: three headline stats, next goal, unlock banner */
+.res-stats { display: flex; justify-content: center; gap: clamp(12px, 4vw, 28px); margin-top: 8px; }
+.res-stats div { display: flex; flex-direction: column; align-items: center; }
+.res-stats b { font-family: var(--font-display); font-size: clamp(15px, 4.6vmin, 22px); }
+.res-stats span { font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+.next-goal { margin-top: 10px; padding: 8px 12px; text-align: left; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); }
+.next-goal > b { display: block; font-family: var(--font-display); font-size: 14px; letter-spacing: 0.06em; margin-bottom: 2px; }
+.goal-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; margin-top: 4px; font-size: 12px; font-weight: 700; }
+.goal-line em { font-style: normal; font-family: var(--font-display); font-size: 11px; color: var(--amber); }
+.goal-line .xp-bar { grid-column: 1 / -1; margin-top: 2px; }
+.goal-line.met { color: var(--green); }
+.xp-row .xp-text { flex-shrink: 0; font-size: 11px; font-weight: 700; color: var(--muted); }
+.unlock-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border-radius: 12px; background: rgba(255,194,71,0.14); border: 1px solid rgba(255,194,71,0.6); }
+.unlock-banner b { display: block; font-family: var(--font-display); color: var(--amber); letter-spacing: 0.06em; }
+
+/* Avatars */
+.avatar { display: inline-grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; font-size: 18px; color: var(--av); background: radial-gradient(circle, rgba(255,255,255,0.08), rgba(8,4,20,0.9)); box-shadow: inset 0 0 0 2px var(--av), 0 0 14px color-mix(in srgb, var(--av) 45%, transparent); }
+.avatar.big { width: 56px; height: 56px; font-size: 26px; }
+.avatar-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.avatar-opt { width: var(--tap); height: var(--tap); border-radius: 50%; font-size: 20px; color: var(--av); background: rgba(8,4,20,0.7); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18); }
+.avatar-opt.active { box-shadow: inset 0 0 0 3px var(--av), 0 0 16px color-mix(in srgb, var(--av) 50%, transparent); }
+
+/* Profile: driver card */
+.driver-card { display: flex; align-items: center; gap: 14px; padding: 12px 14px; margin-bottom: 12px; border-radius: 16px; background: linear-gradient(120deg, rgba(255,45,149,0.12), rgba(34,230,255,0.08)); border: 1px solid rgba(255,45,149,0.35); }
+.driver-card:empty { display: none; }
+.driver-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.driver-main .id-name { font-family: var(--font-display); font-size: clamp(17px, 5vmin, 22px); letter-spacing: 0.06em; overflow-wrap: anywhere; }
+.driver-level { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: var(--cyan); text-transform: uppercase; }
+.driver-edit { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.driver-edit input, .welcome-card input { width: 100%; max-width: 320px; min-height: var(--tap); padding: 8px 12px; font: 700 16px var(--font-ui); color: var(--text); background: rgba(6,3,13,0.7); border: 1px solid var(--line); border-radius: 12px; outline: none; user-select: text; -webkit-user-select: text; }
+.driver-edit input:focus, .welcome-card input:focus { border-color: var(--cyan); }
+.driver-edit .id-msg, .welcome-card .id-msg { font-size: 13px; font-weight: 700; color: var(--red); }
+.driver-edit .id-msg:empty, .welcome-card .id-msg:empty { display: none; }
+
+/* First launch */
+.welcome-screen { display: grid; place-items: center; padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l); background: linear-gradient(180deg, rgba(6,3,13,0.55), rgba(6,3,13,0.9)); overflow-y: auto; touch-action: pan-y; }
+.welcome { display: flex; align-items: center; gap: clamp(16px, 5vw, 48px); max-width: 900px; width: 100%; }
+.welcome .logo { flex: 1; font-size: clamp(30px, 10vmin, 70px); }
+.welcome-card { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 18px; background: rgba(12,7,28,0.85); border: 1px solid rgba(34,230,255,0.35); }
+.welcome-card .btn-xl { width: 100%; }
+@media (orientation: portrait) {
+  .welcome { flex-direction: column; }
+  .welcome .logo { text-align: center; }
+  .welcome-card { width: 100%; }
+}
+.identity-card:empty { display: none; }
+.transfer-code { flex-basis: 100%; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; background: rgba(255,194,71,0.12); border: 1px dashed rgba(255,194,71,0.6); }
+.transfer-code b { font-family: var(--font-display); font-size: clamp(15px, 4.6vmin, 20px); letter-spacing: 0.08em; color: var(--amber); user-select: all; -webkit-user-select: all; }
+.transfer-code small { font-size: 12px; color: var(--muted); }
+.identity-card form input[name="code"] { width: 260px; text-transform: uppercase; }

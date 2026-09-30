@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { withDriver } from './helpers.js';
 
 test.describe('release checks', () => {
-  test.skip(({ isMobile }) => isMobile, 'desktop-only checks');
+  test.skip(({ isMobile }) => isMobile, 'dev/controller checks run once, on the desktop project');
+  test.beforeEach(async ({ page }) => withDriver(page));
 
   test('works offline after the first visit (service worker)', async ({ page, context }) => {
     await page.goto('/');

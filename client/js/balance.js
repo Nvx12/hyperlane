@@ -70,7 +70,6 @@ export const RARE_TRAFFIC = {
   CHANCE: 0.012, // per wave
   MIN_DIFFICULTY: 0.12,
   PASS_POINTS: 1000,
-  PASS_CREDITS: 150,
 };
 
 // ---------------------------------------------------------------- player handling
@@ -186,8 +185,7 @@ export const PICKUPS = {
   BOOST_AMOUNT: 30,
   REPAIR_AMOUNT: 35,
   REPAIR_CHANCE: 0.3,
-  CREDIT_CHIP_CHANCE: 0.04, // rare bonus pickup
-  CREDIT_CHIP_VALUE: 100,
+  CREDIT_CHIP_CHANCE: 0.04, // rare bonus pickup (its credits: progression/config.js)
 };
 
 // ---------------------------------------------------------------- world, weather, events, police
@@ -233,70 +231,62 @@ export const POLICE = {
   SPEED_RATIO: 0.78, // police cruise at this share of the player's top speed
   CRASH_GAP_LOSS: 25,
   ESCAPE_POINTS: 2500,
-  ESCAPE_CREDITS: 500,
   BUSTED_DAMAGE: 25,
 };
 
 // ---------------------------------------------------------------- garage
 
-// Every stat below feeds the car's handling profile directly (see Progression.getCarProfile).
-// Cars are sidegrades with a playstyle each, not a ladder: every fast car pays for it somewhere.
-// unlock.type: auto | totalDistance (m) | totalNearMisses | topSpeed (km/h record) | bestScore | level | secret
+// Every stat below feeds the car's handling profile directly (progression/engine.js carProfile).
+// Each car has its own playstyle and every fast car pays for it somewhere. Tier, price and
+// unlock requirements are progression rules: see progression/config.js CAR_PROGRESSION.
 export const CARS = [
   {
-    id: 'vireo', name: 'Vireo Hatch', class: 'Starter hatchback', style: 'hatch', tier: 1,
+    id: 'vireo', name: 'Vireo Hatch', class: 'Starter hatchback', style: 'hatch',
     width: 1.8, length: 4.0, height: 1.4, paint: '#2fb8ff',
     role: 'Forgiving all-rounder',
     stats: { topKmh: 215, accel: 21, lateralMax: 11.5, steerResponse: 10, brake: 38, boostKmh: 75, boostAccel: 16, boostDrain: 30, boostRegen: 0.45, damageMult: 0.85 },
-    unlock: { type: 'auto' },
     blurb: 'Nimble, tough and cheap to tune. Every legend starts somewhere.',
   },
   {
-    id: 'kestrel', name: 'Kestrel GT', class: 'Sports coupe', style: 'coupe', tier: 1.2,
+    id: 'kestrel', name: 'Kestrel GT', class: 'Sports coupe', style: 'coupe',
     width: 1.9, length: 4.4, height: 1.25, paint: '#ffb000',
     role: 'Balanced — no weak spot',
     stats: { topKmh: 250, accel: 24, lateralMax: 12, steerResponse: 10.5, brake: 40, boostKmh: 85, boostAccel: 18, boostDrain: 30, boostRegen: 0.4, damageMult: 1 },
-    unlock: { type: 'totalDistance', value: 10000 },
     blurb: 'Eager and predictable. Rewards clean lines through traffic.',
   },
   {
-    id: 'bruiser', name: 'Bruiser V8', class: 'Muscle car', style: 'muscle', tier: 1.35,
+    id: 'bruiser', name: 'Bruiser V8', class: 'Muscle car', style: 'muscle',
     width: 2.0, length: 4.8, height: 1.3, paint: '#e0197d',
     role: 'Tank — shrugs off hits, turns like a boat',
     stats: { topKmh: 262, accel: 29, lateralMax: 9.5, steerResponse: 7, brake: 32, boostKmh: 105, boostAccel: 24, boostDrain: 34, boostRegen: 0.35, damageMult: 0.62 },
-    unlock: { type: 'totalNearMisses', value: 50 },
     blurb: 'Brutal straight-line pull and a steel skin. Turning is a suggestion.',
   },
   {
-    id: 'stiletto', name: 'Stiletto R', class: 'Supercar', style: 'super', tier: 1.5,
+    id: 'stiletto', name: 'Stiletto R', class: 'Supercar', style: 'super',
     width: 2.0, length: 4.5, height: 1.15, paint: '#e8203a',
     role: 'Fast and precise, but fragile',
     stats: { topKmh: 295, accel: 27, lateralMax: 12.5, steerResponse: 11, brake: 44, boostKmh: 85, boostAccel: 20, boostDrain: 30, boostRegen: 0.4, damageMult: 1.25 },
-    unlock: { type: 'topSpeed', value: 300 },
     blurb: 'Sharp, fast and precise — but it bruises easily.',
   },
   {
-    id: 'wisp', name: 'Wisp LT', class: 'Lightweight racer', style: 'racer', tier: 1.4,
+    id: 'wisp', name: 'Wisp LT', class: 'Lightweight racer', style: 'racer',
     width: 1.85, length: 4.1, height: 1.05, paint: '#3dffa2',
     role: 'Weaver — instant grip, low top speed, paper armor',
     stats: { topKmh: 245, accel: 32, lateralMax: 14.5, steerResponse: 14, brake: 48, boostKmh: 70, boostAccel: 20, boostDrain: 26, boostRegen: 0.5, damageMult: 1.45 },
-    unlock: { type: 'level', value: 6 },
     blurb: 'Featherweight chassis, telepathic steering. One mistake and it folds.',
   },
   {
-    id: 'aurora', name: 'Aurora X', class: 'Hypercar', style: 'hyper', tier: 1.8,
+    id: 'aurora', name: 'Aurora X', class: 'Hypercar', style: 'hyper',
     width: 2.05, length: 4.6, height: 1.1, paint: '#f2f4ff',
     role: 'Extreme speed, heavy steering — experts only',
     stats: { topKmh: 335, accel: 30, lateralMax: 10, steerResponse: 7.5, brake: 40, boostKmh: 115, boostAccel: 26, boostDrain: 32, boostRegen: 0.35, damageMult: 1.15 },
-    unlock: { type: 'bestScore', value: 250000 },
     blurb: 'Absurd speed. Traffic arrives faster than you can think.',
   },
   {
-    id: 'phantom', name: 'Phantom Zero', class: '???', style: 'phantom', tier: 2, secret: true,
+    id: 'phantom', name: 'Phantom Zero', class: '???', style: 'phantom',
     width: 2.0, length: 4.6, height: 1.1, paint: '#1b1030',
     role: 'Boost fiend — endless nitro, glass body',
     stats: { topKmh: 305, accel: 28, lateralMax: 13, steerResponse: 12, brake: 42, boostKmh: 140, boostAccel: 30, boostDrain: 20, boostRegen: 0.6, damageMult: 1.35 },
-    unlock: { type: 'secret', hint: 'Legends say it only appears to those who outrun the law at the very peak of a combo.' },
     blurb: 'It was never built. It has always been here.',
   },
 ];
@@ -312,7 +302,8 @@ export const STAT_RANGES = {
 };
 
 // Per-level percentage bonuses (cumulative). Diminishing returns: the first levels are the
-// big, noticeable jumps; maxing out helps but never makes the game trivial.
+// big, noticeable jumps; maxing out helps but never makes the game trivial. How many levels a
+// car can take (its tier's ceiling) and what they cost: progression/config.js.
 export const UPGRADES = {
   engine: { label: 'Engine', stat: 'TOP SPEED', steps: [4, 4, 3, 3, 2] },
   turbo: { label: 'Turbo', stat: 'ACCELERATION', steps: [6, 6, 5, 4, 3] },
@@ -321,38 +312,3 @@ export const UPGRADES = {
   nitro: { label: 'Nitro', stat: 'BOOST', steps: [6, 6, 5, 4, 3] },
   armor: { label: 'Armor', stat: 'DURABILITY', steps: [6, 6, 5, 4, 3] },
 };
-export const UPGRADE_COSTS = [250, 550, 950, 1500, 2300];
-
-// ---------------------------------------------------------------- economy & XP
-
-// Skill pays more than mileage: a careful run and a risky run of equal length differ a lot.
-export const CREDITS = {
-  PER_KM: 30,
-  PER_1000_SCORE: 3,
-  OVERTAKE: 1,
-  NEAR_MISS: 6,
-  INSANE_BONUS: 10,
-  PERFECT_OVERTAKE: 8,
-  CHICANE: 25,
-  HIGH_SPEED_PER_10S: 6, // for continuous time held at 200+ km/h
-  COMBO_TIER: [0, 20, 50, 100, 180, 300], // by best combo tier reached (x1 … x10)
-};
-
-export const XP = {
-  PER_KM: 45,
-  PER_1000_SCORE: 2,
-  NEAR_MISS: 6,
-  PERFECT_OVERTAKE: 5,
-  RACE_COMPLETE: 60,
-  LEVEL_BASE: 450, // XP needed for level 1 → 2
-  LEVEL_GROWTH: 150, // extra XP needed per further level
-  MAX_LEVEL: 40,
-};
-
-export const LEVEL_TITLES = [
-  { level: 1, title: 'ROOKIE' },
-  { level: 5, title: 'STREET RACER' },
-  { level: 10, title: 'PRO' },
-  { level: 20, title: 'ELITE' },
-  { level: 30, title: 'LEGEND' },
-];

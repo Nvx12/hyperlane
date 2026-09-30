@@ -1,4 +1,5 @@
 import { GAME_VERSION } from '../version.js';
+import { KEYS, readText, writeText } from '../storage.js';
 
 // Batched, privacy-conscious analytics. track() only pushes to an in-memory array (safe to call
 // from game code); network happens on a 30 s timer, when the batch fills, or via sendBeacon
@@ -7,23 +8,18 @@ import { GAME_VERSION } from '../version.js';
 //   - the browser sends Do Not Track or Global Privacy Control,
 //   - the server reports analytics disabled.
 // Events carry coarse numbers only — never names, ids, tokens or free text.
-const CID_KEY = 'nightvector.cid';
 const FLUSH_MS = 30_000;
 const BATCH_MAX = 20;
 const QUEUE_MAX = 100;
 
 function clientId() {
-  try {
-    let id = localStorage.getItem(CID_KEY);
-    if (!id || !/^[A-Za-z0-9_-]{16,32}$/.test(id)) {
-      const bytes = crypto.getRandomValues(new Uint8Array(12));
-      id = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-      localStorage.setItem(CID_KEY, id);
-    }
-    return id;
-  } catch {
-    return null; // storage blocked: don't track at all
+  let id = readText(KEYS.analyticsId);
+  if (!id || !/^[A-Za-z0-9_-]{16,32}$/.test(id)) {
+    const bytes = crypto.getRandomValues(new Uint8Array(12));
+    id = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    if (!writeText(KEYS.analyticsId, id)) return null; // storage blocked: don't track at all
   }
+  return id;
 }
 
 export const browserOptedOut = () => navigator.doNotTrack === '1' || window.doNotTrack === '1' || navigator.globalPrivacyControl === true;

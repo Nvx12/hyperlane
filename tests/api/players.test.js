@@ -46,9 +46,11 @@ test('create, read, rename and delete a player', async () => {
 
 test('token is stored hashed, never in plain text', async () => {
   const created = await srv.call('POST', '/api/v1/players', { body: { displayName: 'Hashcheck' } });
-  const row = srv.api.db.prepare('SELECT token_hash FROM players WHERE id = ?').get(created.json.player.id);
-  assert.notEqual(row.token_hash, created.json.token);
-  assert.match(row.token_hash, /^[0-9a-f]{64}$/);
+  const row = srv.api.db.prepare("SELECT subject FROM auth_identities WHERE player_id = ? AND provider = 'device'").get(created.json.player.id);
+  assert.notEqual(row.subject, created.json.token);
+  assert.match(row.subject, /^[0-9a-f]{64}$/);
+  const dump = JSON.stringify(srv.api.db.prepare('SELECT * FROM auth_identities').all());
+  assert.ok(!dump.includes(created.json.token), 'the plain token appears nowhere');
 });
 
 test('rejects invalid names', async () => {

@@ -1,5 +1,6 @@
 import { CARS, UPGRADES } from './balance.js';
 import { UPGRADE_KEYS, getCar, upgradeBonus } from './Progression.js';
+import { progressText } from './progression/engine.js';
 import { COSMETICS, COSMETIC_SLOTS, resolveCustom } from './data/cosmetics.js';
 import { getEnvironment } from './Environment.js';
 import { createPlayerSprites, createUnderglowSprite } from './Sprites.js';
@@ -8,6 +9,7 @@ import { escapeHtml } from './UIManager.js';
 // The five stats a player actually reads on a phone (braking lives in the upgrade list).
 const STAT_KEYS = [['TOP SPEED', 'SPEED'], ['ACCELERATION', 'ACCELERATION'], ['HANDLING', 'HANDLING'], ['BOOST', 'BOOST'], ['DURABILITY', 'DURABILITY']];
 const SWIPE_MIN_PX = 40;
+const fmt = n => Math.floor(n).toLocaleString('en-US');
 
 // Menu screens. Everything here is event-driven DOM work (never per-frame), except the
 // garage preview canvas which the game loop redraws while the garage is open.
@@ -99,13 +101,15 @@ export class Menus {
   }
 
   back() {
+    if (this.current === 'welcome') return; // the driver must be created first
     if (this.current !== 'home') this.open('home');
   }
 
   refreshTopbar() {
     const prog = this.progression;
-    this.game.ui.setTopbar({ ...prog.levelProgress(), credits: prog.save.credits });
-    const credits = prog.save.credits.toLocaleString('en-US');
+    const profile = this.game.save.profile;
+    this.game.ui.setTopbar({ ...prog.levelProgress(), credits: prog.state.credits, name: profile ? profile.name : '', avatar: profile ? profile.avatar : '' });
+    const credits = fmt(prog.state.credits);
     document.getElementById('sheet-credits').textContent = credits;
     document.getElementById('garage-credits').textContent = credits;
   }
@@ -131,61 +135,77 @@ export class Menus {
     this.renderGarage();
   }
 
+  // Shows a specific car (e.g. results → VIEW UNLOCK).
+  showCar(id) {
+    this.garageCarId = id;
+    if (this.current === 'garage') this.renderGarage();
+  }
+
   renderGarage() {
     this.previewEntry = null;
+    this.confirmKey = null;
     const prog = this.progression;
     if (!this.garageCarId) this.garageCarId = prog.selectedCar().id;
     const car = getCar(this.garageCarId);
-    const unlocked = prog.isUnlocked(car.id);
-    const hidden = car.secret && !unlocked;
+    const st = prog.status(car.id);
 
     document.getElementById('car-dots').innerHTML = CARS.map(c =>
-      `<i class="${c.id === car.id ? 'active' : ''} ${prog.isUnlocked(c.id) ? '' : 'locked'}"></i>`).join('');
-    document.getElementById('garage-class').textContent = hidden ? 'Secret vehicle' : car.class;
-    document.getElementById('garage-name').textContent = hidden ? '???' : car.name;
-    document.getElementById('garage-role').textContent = hidden ? '' : car.role;
-    document.getElementById('garage-stats').innerHTML = hidden ? '<p class="muted">Specifications classified.</p>' : this.statsHtml(car);
+      `<i class="${c.id === car.id ? 'active' : ''} ${prog.status(c.id).state}"></i>`).join('');
+    const tier = st.legendary ? 'LEGENDARY' : st.tierName;
+    document.getElementById('garage-class').textContent = st.hidden ? 'LEGENDARY VEHICLE'
+      : car.class.toUpperCase() === tier ? tier : `${tier} · ${car.class}`; // "SUPERCAR", not "SUPERCAR · Supercar"
+    document.getElementById('garage-name').textContent = st.hidden ? '???' : car.name;
+    document.getElementById('garage-role').textContent = st.hidden ? '' : car.role;
+    const chip = document.getElementById('garage-state');
+    chip.textContent = st.owned ? 'Owned' : st.unlocked ? 'Available to buy' : 'Locked';
+    chip.className = `state-chip ${st.state}`;
+    const stats = document.getElementById('garage-stats');
+    if (st.hidden) stats.innerHTML = '<p class="muted">Specifications classified.</p>';
+    else if (st.owned) stats.innerHTML = this.statsHtml(car);
+    else stats.innerHTML = this.specLine(car);
 
     const action = document.getElementById('garage-action');
-    const up = unlocked ? this.cheapestUpgrade(car.id) : null;
-    const upgradeBtn = `<button class="btn btn-ghost" data-gact="openUpgrades" ${unlocked ? '' : 'disabled'}>Upgrade${up && up.affordable ? '<span class="badge">READY</span>' : ''}</button>`;
-    if (unlocked) {
-      const selected = prog.save.selectedCar === car.id;
+    if (st.owned) {
+      const selected = prog.state.selectedCar === car.id;
+      const up = selected ? prog.nextUpgrade() : null;
+      const ready = up && up.affordable;
       action.innerHTML = `<div class="btn-pair">${selected
         ? '<span class="chip big">Driving</span>'
-        : '<button class="btn btn-primary" data-gact="select">Select</button>'}${upgradeBtn}</div>`;
+        : '<button class="btn btn-primary" data-gact="select">Select</button>'}<button class="btn btn-ghost" data-gact="openUpgrades">Upgrade${ready ? '<span class="badge">READY</span>' : ''}</button></div>`;
+    } else if (st.hidden) {
+      action.innerHTML = '<div class="unlock-req"><span class="hud-label">Requirement</span><p>Unknown</p><small>Some cars are earned, not found.</small></div>';
     } else {
-      const p = prog.unlockProgress(car);
-      const ratio = Math.min(1, p.value / p.target);
-      const value = car.unlock.type === 'secret' ? '' : `${this.fmtProgress(car, p.value)} / ${this.fmtProgress(car, p.target)}`;
-      action.innerHTML = `<div class="unlock-req"><span class="hud-label">To unlock</span><p>${escapeHtml(p.text)}</p>
-        ${car.unlock.type === 'secret' ? '' : `<div class="xp-bar big"><i style="transform:scaleX(${ratio})"></i></div><small>${value}</small>`}</div>`;
+      action.innerHTML = this.requirementsHtml(st);
     }
     this.refreshTopbar();
     if (this.sheetOpen) this.renderGarageTab();
   }
 
-  cheapestUpgrade(carId) {
-    const prog = this.progression;
-    let best = null;
-    for (const key of UPGRADE_KEYS) {
-      const cost = prog.upgradeCost(carId, key);
-      if (cost !== null && (!best || cost < best.cost)) best = { key, cost };
-    }
-    if (best) best.affordable = prog.save.credits >= best.cost;
-    return best;
+  // Compact spec line for cars the player does not own yet (full bars once it is theirs).
+  specLine(car) {
+    const p = this.progression.getCarProfile(car.id, false);
+    return `<p class="spec-line">${Math.round(p.topKmh)} km/h top · +${Math.round(p.boostKmh)} boost · ${Math.round(100 / p.damageMult)}% armor</p>`;
   }
 
-  fmtProgress(car, v) {
-    if (car.unlock.type === 'totalDistance') return `${(v / 1000).toFixed(1)} km`;
-    if (car.unlock.type === 'topSpeed') return `${Math.round(v)} km/h`;
-    return Math.floor(v).toLocaleString('en-US');
+  // Locked: every requirement with its progress, then the price. Available: the buy button.
+  requirementsHtml(st) {
+    const credits = this.progression.state.credits;
+    const reqs = st.requirements.map(r => `<div class="req ${r.met ? 'met' : ''}">
+        <span>${r.met ? '✓ ' : ''}${escapeHtml(r.secret ? 'A secret feat' : r.text)}</span><em>${escapeHtml(r.secret ? (r.met ? 'Done' : '???') : progressText(r))}</em>
+        ${r.met || r.secret ? '' : `<div class="xp-bar"><i style="transform:scaleX(${Math.min(1, r.value / r.target)})"></i></div>`}</div>`).join('');
+    const price = `<div class="req price ${credits >= st.price ? 'met' : ''}"><span>Price</span><em>◈ ${fmt(st.price)}</em></div>`;
+    if (!st.unlocked) return `<div class="unlock-req"><span class="hud-label">Locked · requires</span>${reqs}${price}</div>`;
+    const short = st.price - credits;
+    const confirming = this.confirmKey === `car:${st.id}`;
+    const label = short > 0 ? `Need ◈ ${fmt(short)} more` : confirming ? `Confirm · ◈ ${fmt(st.price)}` : `Buy · ◈ ${fmt(st.price)}`;
+    return `<div class="unlock-req available"><span class="hud-label">Requirements met</span>${price}
+      <button class="btn btn-primary ${confirming ? 'confirm' : ''}" data-gact="buyCar" ${short > 0 ? 'disabled' : ''}>${label}</button></div>`;
   }
 
   // Upgrade / style drawer (a sheet over the garage; Back closes it).
   openSheet(tab = 'upgrades') {
     if (this.current !== 'garage') return;
-    if (!this.progression.isUnlocked(this.garageCarId || this.progression.selectedCar().id)) return;
+    if (!this.progression.owns(this.garageCarId || this.progression.selectedCar().id)) return;
     this.gtab = tab;
     this.sheetOpen = true;
     this.sheet.hidden = false;
@@ -200,9 +220,8 @@ export class Menus {
   renderGarageTab() {
     document.querySelectorAll('[data-gtab]').forEach(t => t.classList.toggle('active', t.dataset.gtab === this.gtab));
     const car = getCar(this.garageCarId);
-    const unlocked = this.progression.isUnlocked(car.id);
     const body = document.getElementById('garage-tab');
-    body.innerHTML = this.gtab === 'style' ? this.styleHtml(car, unlocked) : this.upgradesHtml(car, unlocked);
+    body.innerHTML = this.gtab === 'style' ? this.styleHtml(car) : this.upgradesHtml(car);
   }
 
   statsHtml(car) {
@@ -222,35 +241,38 @@ export class Menus {
         <div class="bar-track"><i class="gain" style="transform:scaleX(${tuned[k]})"></i><i class="base" style="transform:scaleX(${base[k]})"></i></div></div>`).join('');
   }
 
-  upgradesHtml(car, unlocked) {
+  // Pips show this car's ceiling (its tier), so a starter visibly can't be tuned into a hypercar.
+  upgradesHtml(car) {
     const prog = this.progression;
-    const state = prog.carState(car.id);
-    const credits = prog.save.credits;
-    return `<div class="upgrade-list">${UPGRADE_KEYS.map(key => {
+    const ceiling = prog.upgrade(car.id, 'engine').ceiling;
+    return `<p class="sheet-note">${prog.status(car.id).tierName} cars take up to ${ceiling} levels per upgrade.</p><div class="upgrade-list">${UPGRADE_KEYS.map(key => {
       const u = UPGRADES[key];
-      const level = state.upgrades[key];
-      const cost = prog.upgradeCost(car.id, key);
-      const max = cost === null;
-      const next = max ? '' : `+${u.steps[level]}%`;
-      const afford = !max && credits >= cost && unlocked;
-      const pips = u.steps.map((_, i) => `<i class="${i < level ? 'on' : ''}"></i>`).join('');
+      const info = prog.upgrade(car.id, key);
+      const pips = Array.from({ length: info.ceiling }, (_, i) => `<i class="${i < info.level ? 'on' : ''}"></i>`).join('');
+      let btn;
+      if (info.maxed) btn = '<span class="chip">Maxed</span>';
+      else if (info.levelLocked) btn = `<button class="buy-btn" disabled><span>+${info.nextBonus}%</span><b>Level ${info.levelRequired}</b></button>`;
+      else btn = `<button class="buy-btn" data-gact="buy" data-key="${key}" ${info.affordable ? '' : 'disabled'}><span>+${info.nextBonus}%</span><b>◈ ${fmt(info.cost)}</b></button>`;
       return `<div class="upgrade-row">
-        <div class="up-info"><b>${u.label}</b><small>${u.stat} · +${Math.round(upgradeBonus(key, level) * 100)}%</small><div class="pips">${pips}</div></div>
-        ${max ? '<span class="chip">Maxed</span>' : `<button class="buy-btn" data-gact="buy" data-key="${key}" ${afford ? '' : 'disabled'}><span>${next}</span><b>◈ ${cost.toLocaleString('en-US')}</b></button>`}
+        <div class="up-info"><b>${u.label}</b><small>${u.stat} · +${Math.round(upgradeBonus(key, info.level) * 100)}%</small><div class="pips">${pips}</div></div>${btn}
       </div>`;
     }).join('')}</div>`;
   }
 
-  styleHtml(car, unlocked) {
+  // Cosmetics: free or owned items apply on tap; others show their price (tap twice to buy)
+  // or the driver level they need. Bought once, usable on every car.
+  styleHtml(car) {
     const prog = this.progression;
     const custom = prog.carState(car.id).custom;
-    const level = prog.save.level;
     return `<div class="style-list">${COSMETIC_SLOTS.map(([slot, label]) => `
       <div class="style-row"><span class="hud-label">${label}</span><div class="chips">${COSMETICS[slot].map(o => {
-        const locked = !unlocked || (o.level && level < o.level);
+        const c = prog.cosmetic(slot, o.id);
         const swatch = o.color || (o.rgb ? `rgb(${o.rgb})` : slot === 'paint' ? car.paint : '');
-        return `<button class="opt ${custom[slot] === o.id ? 'active' : ''} ${locked ? 'locked' : ''}" data-gact="style" data-key="${slot}" data-value="${o.id}" ${locked ? 'disabled' : ''}>
-          ${swatch ? `<i style="background:${swatch}"></i>` : ''}<span>${escapeHtml(o.label)}</span>${o.level && level < o.level ? `<small>Lv ${o.level}</small>` : ''}</button>`;
+        const confirming = this.confirmKey === `cos:${c.key}`;
+        const note = c.owned ? '' : c.levelLocked ? `Lv ${c.levelRequired}` : confirming ? 'Tap to buy' : `◈ ${fmt(c.price)}`;
+        const disabled = !c.owned && (c.levelLocked || !c.affordable);
+        return `<button class="opt ${custom[slot] === o.id ? 'active' : ''} ${c.owned ? '' : 'locked'} ${confirming ? 'confirm' : ''}" data-gact="style" data-key="${slot}" data-value="${o.id}" ${disabled ? 'disabled' : ''}>
+          ${swatch ? `<i style="background:${swatch}"></i>` : ''}<span>${escapeHtml(o.label)}</span>${note ? `<small>${note}</small>` : ''}</button>`;
       }).join('')}</div></div>`).join('')}</div>`;
   }
 
@@ -264,25 +286,61 @@ export class Menus {
       return;
     }
     if (action === 'select') {
-      if (prog.selectCar(id)) {
+      if (prog.selectCar(id).ok) {
         audio.ui('confirm');
         this.game.haptics.pulse('tap');
         this.game.applySelectedCar();
         this.game.analytics.track('car_selected', { car: id });
       }
-    } else if (action === 'buy') {
-      if (prog.buyUpgrade(id, key)) {
+    } else if (action === 'buyCar') {
+      // Two taps: the first arms the button, the second spends the credits.
+      if (this.confirmKey !== `car:${id}`) {
+        audio.ui('click');
+        this.confirmKey = `car:${id}`;
+        document.getElementById('garage-action').innerHTML = this.requirementsHtml(prog.status(id));
+        return;
+      }
+      if (prog.purchaseCar(id).ok) {
         audio.purchase();
         this.game.haptics.pulse('unlock');
-        this.game.analytics.track('upgrade_bought', { car: id, upgrade: key, level: prog.carState(id).upgrades[key] });
-        if (id === prog.save.selectedCar) this.game.applySelectedCar();
+        prog.selectCar(id);
+        this.game.applySelectedCar();
+        this.game.analytics.track('car_bought', { car: id });
+        this.game.ui.toast('New car', `${getCar(id).name} is in your garage`, 'unlock');
+      } else {
+        audio.ui('deny');
+      }
+    } else if (action === 'buy') {
+      const r = prog.buyUpgrade(id, key);
+      if (r.ok) {
+        audio.purchase();
+        this.game.haptics.pulse('unlock');
+        this.game.analytics.track('upgrade_bought', { car: id, upgrade: key, level: r.level });
+        if (id === prog.state.selectedCar) this.game.applySelectedCar();
       } else {
         audio.ui('deny');
       }
     } else if (action === 'style') {
-      if (prog.setCustom(id, key, value)) {
+      const c = prog.cosmetic(key, value);
+      if (c && !c.owned) {
+        if (this.confirmKey !== `cos:${c.key}`) {
+          audio.ui('click');
+          this.confirmKey = `cos:${c.key}`;
+          this.renderGarageTab();
+          return;
+        }
+        this.confirmKey = null;
+        if (!prog.buyCosmetic(key, value).ok) {
+          audio.ui('deny');
+          this.renderGarageTab();
+          return;
+        }
+        audio.purchase();
+        this.game.analytics.track('cosmetic_bought', { item: c.key });
+      }
+      if (prog.setCosmetic(id, key, value).ok) {
         audio.ui('click');
-        if (id === prog.save.selectedCar) this.game.applySelectedCar();
+        if (id === prog.state.selectedCar) this.game.applySelectedCar();
       }
     }
     this.renderGarage();
@@ -344,7 +402,7 @@ export class Menus {
     const W = canvas.width;
     const H = canvas.height;
     const car = getCar(this.garageCarId);
-    const locked = !this.progression.isUnlocked(car.id);
+    const locked = !this.progression.owns(car.id);
     // Resolved once per garage re-render (car/paint change), not per frame.
     if (!this.previewEntry) this.previewEntry = this.previewSprites(car, locked);
     const entry = this.previewEntry;

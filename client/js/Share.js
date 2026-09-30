@@ -1,5 +1,5 @@
 import { ENVIRONMENTS } from './data/environments.js';
-import { checkName } from './net/PlayerService.js';
+import { validateDisplayName as checkName } from './names.js';
 import { GAME_NAME } from './version.js';
 
 // Sharing and challenge links. A challenge link carries only what's needed to show

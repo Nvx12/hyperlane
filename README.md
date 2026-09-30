@@ -82,10 +82,13 @@ The loop: **drive fast → take risks → near miss / late dodge → combo → b
 
 ## Progression and features
 
-- **7 cars**, each a sidegrade with its own playstyle (one is secret). Six upgrade categories with diminishing returns, plus cosmetics.
-- **Economy:** credits, XP and driver levels. Three scaling missions at a time, a daily challenge that's the same for everyone on a given date, achievements, personal records and statistics.
+- **Driver profile:** the first launch asks for a driver name and an avatar — nothing else — then starts the first race. The profile is a guest profile saved on the phone; *Go online* (Profile) turns it into an online account.
+- **Progression** ([docs/progression.md](docs/progression.md)): one rules engine for XP, levels, credits, car unlocks and purchases, upgrades, cosmetics, missions, the daily challenge and achievements, shared by the game and the server. All numbers live in `client/js/progression/config.js`, tuned with a simulation on recorded runs (`tools/balance`).
+- **7 cars in 5 tiers** (Street → Sport → Performance → Supercar → Hypercar, plus a secret legendary car). Powerful cars need a driver level *and* a skill goal, then a credit price. Locked cars stay visible with their requirements and progress. Tier ceilings on upgrades keep each car's identity.
+- **One currency** (credits) for cars, upgrades and cosmetics. Skill pays more than mileage; per-run caps stop one freak run from skipping the ladder.
+- **After a race:** score, distance, best combo, top speed, credits and XP, the level bar, *New unlock available* (with *View unlock*) and one concrete next goal.
 - **World:** five routes plus a world tour, time of day, weather (rain, fog, storm), announced road events and rare surprises.
-- **Online (optional):** anonymous racer profile, validated ranked runs, and leaderboards for top score / longest run / top speed / best combo, each for today, this week and all time.
+- **Online (optional):** cloud progress, validated runs, leaderboards (score / distance / top speed / combo × today / week / all time), and a one-time transfer code to continue on another phone.
 - **Social:** Share & challenge from the results screen creates a link that shows your score as a challenge to whoever opens it.
 - **Ghost:** a translucent replay of your personal best races alongside you (Settings → Best-run ghost).
 
@@ -141,18 +144,25 @@ Dockerfile  docker-compose.yml  .env.example  .github/workflows/ci.yml
 
 ## API (`/api/v1`)
 
-All responses are JSON. Errors always have the shape `{ "error": { "code", "message" } }`, never a stack trace. Authentication is `Authorization: Bearer <token>`, using the token returned once at profile creation.
+All responses are JSON. Errors always have the shape `{ "error": { "code", "message" } }`, never a stack trace. Authentication is `Authorization: Bearer <token>` (the device token returned when the account is created or recovered). Full design, sync and conflict rules: [docs/backend.md](docs/backend.md).
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/status` | – | Version, server time, feature flags |
-| POST | `/players` | – | Create profile `{displayName}` → `{player, token}` |
-| GET | `/players/me` | ✓ | Profile and online bests |
-| PATCH | `/players/me` | ✓ | Rename `{displayName}` |
-| DELETE | `/players/me` | ✓ | Delete profile and all its runs (right to erasure) |
-| POST | `/races` | ✓ | Start a session `{carId, envId, clientVersion}` → `{sessionId}` |
-| POST | `/races/:id/finish` | ✓ | Submit a run → `{accepted, personalBest, ranks}` or `{accepted:false, message}` |
-| GET | `/leaderboard?category=&period=` | optional | Top 100. `category`: score, distance, speed or combo. `period`: day, week or all. With a token: `me` flags and your own rank. |
+| POST | `/players` | – | Create an account `{displayName}` → `{player, token, progress, revision}` |
+| GET · PATCH · DELETE | `/players/me` | ✓ | Profile · rename · delete account and everything tied to it |
+| POST | `/auth/recovery-code` | ✓ | One-time transfer code for another phone |
+| POST | `/auth/recover` | – | Redeem a transfer code → new device token + cloud progress |
+| GET | `/progress` | ✓ | Canonical progression document + revision |
+| POST | `/progress/import` | ✓ | One-time guest import (clamped) |
+| POST | `/sync` | ✓ | Apply up to 60 operations in order (purchases, upgrades, cosmetics, races) → per-op results + document |
+| GET | `/cars` | – | Car catalog: tiers, prices, requirements, upgrade ceilings |
+| GET | `/garage` | ✓ | Owned / available / locked cars with requirement progress |
+| POST | `/garage/purchase` · `/garage/upgrade` · `/garage/select` · `/garage/cosmetic` | ✓ | Single garage operations `{opId, …}` |
+| GET | `/missions` · `/achievements` | ✓ | Missions, daily challenge, achievements |
+| POST | `/races` | ✓ | Start a ranked session `{carId, envId, clientVersion}` (car must be owned) |
+| POST | `/races/:id/finish` | ✓ | Finish it (the same validated race operation as `/sync`) |
+| GET | `/leaderboard?category=&period=` | optional | Top 100. `category`: score, distance, speed or combo. `period`: day, week or all. |
 | GET | `/leaderboard/me` | ✓ | Your rank on every board |
 | POST | `/events` | – | Analytics batch (see Privacy) |
 
@@ -165,14 +175,20 @@ These endpoints sit outside `/api/v1`:
 
 ## Database (SQLite)
 
-Versioned migrations in `server/src/api/db.js`, recorded in `schema_migrations`. The database runs in WAL mode with foreign keys on.
+A real, file-backed SQLite database (`node:sqlite`, WAL mode, foreign keys on) on a Docker volume, with versioned migrations in `server/src/api/db.js` recorded in `schema_migrations`. Why SQLite rather than PostgreSQL, and how to move later: [docs/backend.md](docs/backend.md).
 
-| Table | Columns (key ones) | Notes |
-|---|---|---|
-| `players` | `id`, `display_name`, `token_hash` (unique), `created_at`, `last_seen_at`, `name_changed_at`, `races`, `flagged` | Only the SHA-256 of the token is stored. `flagged=1` hides a player from boards. |
-| `race_sessions` | `id`, `player_id`, `car_id`, `env_id`, `client_version`, `started_at`, `finished_at`, `status` (open/accepted/rejected/expired), `reject_reason`, `result_hash` | The server stamps the start time. |
-| `scores` | `session_id` (unique), `player_id`, `score`, `distance_m`, `top_speed_kmh`, `best_combo`, `duration_ms`, `car_id`, `created_at` | Accepted runs only. Deleted with their player. |
-| `events` | `name`, `client_id`, `props` (JSON), `app_version`, `created_at` | Analytics. No IP, user agent or player id. 90-day retention. |
+| Table | Holds |
+|---|---|
+| `players` | Account: stable id, public display name, timestamps, `flagged` (hidden from boards) |
+| `auth_identities` | Sign-in credentials per account: device tokens and one-time transfer codes (SHA-256 only); email / Google / Apple reserved |
+| `cars` | Canonical car catalog (tier, price, level, requirements, upgrade ceiling), synced from config at startup |
+| `player_progress` | Credits (≥ 0), XP, level, selected car, missions and daily (JSON), revision |
+| `player_stats` | Lifetime totals and personal records |
+| `player_cars` · `player_cosmetics` · `player_achievements` | Owned cars with upgrade levels (0–5 each), bought cosmetics, unlocked achievements |
+| `race_results` | Every settled run (online or offline): summary numbers, status, credits and XP paid |
+| `race_sessions` · `scores` | Server-stamped ranked sessions and the leaderboard entries |
+| `sync_ops` | Idempotency log: a retried operation is answered, never applied twice |
+| `events` | Analytics. No IP, user agent or player id. 90-day retention. |
 
 ## Security
 
