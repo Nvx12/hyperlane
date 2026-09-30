@@ -132,6 +132,7 @@ export class Game {
     this.sync.onChange = () => this.onProgressReplaced();
     this.ghost = new Ghost();
     this.analytics = new Analytics(this.api, () => this.save.settings);
+    this.analytics.isBusy = () => this.isRaceActive();
     // App-shell events → analytics (coarse, no identifiers).
     this.shell.on((type, data) => {
       if (type === 'installed') this.analytics.track('pwa_installed');

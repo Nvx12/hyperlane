@@ -32,6 +32,7 @@ export class Analytics {
     this.cid = null;
     this.timer = null;
     this.serverEnabled = true;
+    this.isBusy = () => false; // set by the game: true while a race runs
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') this.flush(true);
     });
@@ -64,6 +65,11 @@ export class Analytics {
     clearTimeout(this.timer);
     this.timer = null;
     if (!this.queue.length || !this.enabled || navigator.onLine === false) return;
+    // Races are network-free: a batch that comes due mid-race waits (the page-hide beacon doesn't).
+    if (!unloading && this.isBusy()) {
+      this.timer = setTimeout(() => this.flush(false), FLUSH_MS);
+      return;
+    }
     if (!this.cid) this.cid = clientId();
     if (!this.cid) {
       this.queue.length = 0;

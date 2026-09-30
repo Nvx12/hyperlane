@@ -304,9 +304,10 @@ Put a TLS-terminating reverse proxy in front (Caddy, nginx or a platform load ba
 
 | Suite | Command | Covers |
 |---|---|---|
-| Unit | `npm test` | Scoring and combo tiers/decay, upgrades and costs, XP, records, unlocks, run rewards, save load/migration/corruption/sanitizing, missions, daily challenge, achievements, anti-cheat rules, challenge links, ghost |
-| API | `npm test` | Profiles, names, auth, body limits, rate limits, CORS, sessions, idempotency, replay, expiry, validation, leaderboards, erasure, analytics, security abuse cases, robots/sitemap |
-| E2E | `npm run e2e` | Phone home screen without console errors, one-tap PLAY → race with touch controls → results → one-tap restart, pause button and resume countdown, first-race tutorial and skip, online profile and leaderboard, security headers, offline play via the service worker, challenge links (valid and hostile), controller navigation and driving, frame-time budget. Phone and desktop profiles. |
+| Unit | `npm test` | Scoring and combo, the progression engine (XP curve, car requirements and purchases, upgrade ceilings and level gates, cosmetics, run rewards and caps, settlement, unlock announcements, next goal, document repair), seeded missions, daily challenge, achievements, save v3 and the v1/v2 migrations, driver profiles, anti-cheat rules, challenge links, ghost, and a balancing-simulation guard on the progression targets |
+| API | `npm test` | Accounts, names, auth, body limits, rate limits, CORS, sessions, idempotency, replay, expiry, validation, leaderboards, erasure, analytics, security abuse cases, robots/sitemap; cloud progression: server-paid races (once), offline time budget, purchases (locked, broke, success, duplicate), upgrades (ceiling, level gate, ownership), forged prices/credits/levels, malformed operations, impossible runs, mission rewards, guest import clamps, transfer codes, catalog/garage endpoints, database constraints, upgrading a real v2 database file |
+| E2E | `npm run e2e` | First launch (create driver → first race with the tutorial), home navigation, one-tap PLAY → race → results with rewards and next goal → restart, bonus feed stays off the road (≤ 3 lines), pause and resume countdown, garage requirements and the secret car, going online and the leaderboard, security headers, offline play via the service worker, challenge links, controller navigation and driving, frame-time budget. Phone and desktop profiles. |
+| Balancing | `node tools/balance/sample-runs.mjs` · `node tools/balance/simulate.mjs` | Records bot runs through the real game, then simulates progression from a new profile for casual / skilled / expert players (see docs/progression.md) |
 
 **CI** (`.github/workflows/ci.yml`) runs lint → unit/API → build → E2E. It then builds the Docker image, waits for the container to become healthy, and checks that `docker stop` exits cleanly.
 
@@ -343,7 +344,11 @@ Put a TLS-terminating reverse proxy in front (Caddy, nginx or a platform load ba
 - The road is flat (no hills), and all traffic drives in your direction.
 - Anti-cheat can't detect a modified client that plays in real time with believable numbers (see above).
 - Display-name screening is a short word list, not full moderation; the `flagged` column is the manual tool.
-- The server is single-instance: rate limits live in memory, and SQLite runs on one volume.
+- The server is single-instance: rate limits live in memory, and SQLite runs on one volume (see docs/backend.md for the PostgreSQL path). `node:sqlite` is still marked experimental in Node 24.
+- Progression was balanced on bot runs, not people. Bots crash sooner in the fastest cars, so the simulated skill advantage late in the ladder is probably understated; re-check with real beta data.
+- Accounts have device tokens and one-time transfer codes only; email / Google / Apple sign-in is designed for (`auth_identities`) but not built. Losing the phone without a transfer code loses the account.
+- A guest's progress can't be verified, so going online imports it with limits (level 12, 20,000 credits, upgrade step 3).
+- Up to 60 changes can wait offline for sync; beyond that the oldest are dropped from the queue (the local game keeps them until the next cloud copy replaces it).
 
 ## Licenses
 
