@@ -301,6 +301,9 @@ export const POLICE = {
   REDISPATCH: 6, // seconds before a lost unit is replaced (if the chase goes on)
   LOST_DZ: -55, // a unit this far behind has lost sight of you
   VIEW_AHEAD: 90, // a unit ahead within this range still sees you
+  ENGAGE_DZ: -4.5, // a unit closer than this behind you (or ahead) is on screen: the chase is on
+  HIDDEN_DZ: -12, // an unseen pursuer farther back than this ignores traffic (it is off screen)
+  ENGAGE_GRACE: 20, // s: the escape meter can't fill before a unit was on screen (unless this long)
   PRESSURE_DZ: 12, // a unit this close (either side) is on you
   INTERCEPT_FROM_STAR: 3,
   INTERCEPT_DZ: 28, // interceptors hold this far ahead…

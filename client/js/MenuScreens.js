@@ -392,6 +392,9 @@ export function registerMenuScreens(menus, game) {
       return `<div class="setting"><span>${c.label}${note ? `<small>${note}</small>` : ''}</span><div class="seg">${c.options.map(([v, label]) =>
         `<button class="${st[key] === v ? 'active' : ''}" data-setting="${key}" data-value="${String(v)}">${label}</button>`).join('')}</div></div>`;
     };
+    // Volume sliders (0–100 %). Chase music follows Music; sirens follow Effects.
+    const vol = (key, label, note = '') => `<label class="setting"><span>${label}<small>${Math.round(st[key] * 100)}%${note ? ` · ${note}` : ''}</small></span>
+      <input type="range" min="0" max="1" step="0.05" value="${st[key]}" data-slider="${key}" aria-label="${label}"></label>`;
     const perf = game.perf;
     const autoNote = st.quality === 'auto' ? `Auto picked ${perf.levelName}${perf.extra ? ' (reduced)' : ''}` : '';
     const tilt = st.steering === 'tilt';
@@ -417,7 +420,7 @@ export function registerMenuScreens(menus, game) {
       <h3 class="section-title" style="margin-top:18px">Display</h3>
       <div class="settings-list">${seg('quality', autoNote)}${seg('fps', 'Auto = 60, or 30 if the phone struggles')}${seg('shake')}</div>
       <h3 class="section-title" style="margin-top:18px">Sound</h3>
-      <div class="settings-list">${seg('muted')}${seg('musicEnabled')}</div>
+      <div class="settings-list">${seg('muted')}${seg('musicEnabled')}${vol('master', 'Master volume')}${vol('music', 'Music volume', 'Includes the police chase music')}${vol('sfx', 'Effects volume', 'Sirens, crashes and cues')}</div>
       <h3 class="section-title" style="margin-top:18px">More</h3>
       <div class="settings-list">${seg('ghost')}${stats}</div>
       <div class="danger-zone">

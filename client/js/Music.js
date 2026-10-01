@@ -33,6 +33,9 @@ export class Music {
     this.intensity = 0;
     this.mode = 'menu';
     this.enabled = false;
+    this.level = 1; // fader: 0 while the chase track plays (AudioManager decides)
+    this.silentAfter = 0; // context time after which a faded-out loop stops scheduling notes
+    this.tension = 0; // 0..1: heat before a chase (tighter filter, pulsing stabs)
   }
 
   setEnabled(enabled) {
@@ -41,7 +44,7 @@ export class Music {
     if (enabled) {
       this.nextTime = this.ctx.currentTime + 0.05;
       this.timer = setInterval(() => this.schedule(), TICK_MS);
-      this.out.gain.setTargetAtTime(1, this.ctx.currentTime, 0.5);
+      this.out.gain.setTargetAtTime(this.level, this.ctx.currentTime, 0.5);
     } else {
       clearInterval(this.timer);
       this.timer = 0;
@@ -49,10 +52,34 @@ export class Music {
     }
   }
 
+  // menu · race · chase (fallback when no chase track is available) · wreck
   setMode(mode) {
     this.mode = mode;
+    this.updateFilter();
+  }
+
+  updateFilter() {
+    const m = this.mode;
+    const f = m === 'wreck' ? 380 : m === 'menu' ? 1400 : m === 'chase' ? 4200 : 2600 - this.tension * 700;
+    this.filter.frequency.setTargetAtTime(f, this.ctx.currentTime, 0.4);
+  }
+
+  setTension(v) {
+    if (v === this.tension) return;
+    this.tension = v;
+    this.updateFilter();
+  }
+
+  // Fade the loop to a level over about `time` seconds. At 0 it stops scheduling notes (no CPU,
+  // no hidden layers) and restarts on a bar line when brought back.
+  fadeTo(level, time, delay = 0) {
+    this.level = level;
     const t = this.ctx.currentTime;
-    this.filter.frequency.setTargetAtTime(mode === 'wreck' ? 380 : mode === 'menu' ? 1400 : 2600, t, 0.4);
+    const g = this.out.gain;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    g.setTargetAtTime(this.enabled ? level : 0, t + delay, Math.max(0.01, time / 3));
+    this.silentAfter = level === 0 ? t + delay + time : 0;
   }
 
   setIntensity(v) {
@@ -62,6 +89,11 @@ export class Music {
   schedule() {
     const ctx = this.ctx;
     if (ctx.state !== 'running') return;
+    if (this.level === 0 && ctx.currentTime > this.silentAfter) {
+      this.step = 0;
+      this.nextTime = ctx.currentTime + 0.05;
+      return;
+    }
     while (this.nextTime < ctx.currentTime + LOOKAHEAD) {
       this.playStep(this.step, this.nextTime);
       this.nextTime += STEP;
@@ -72,8 +104,9 @@ export class Music {
   playStep(step, t) {
     const bar = PROGRESSION[(step >> 4) & 3];
     const s = step & 15;
-    const race = this.mode === 'race';
-    const i = race ? this.intensity : 0.15;
+    const chase = this.mode === 'chase';
+    const race = this.mode === 'race' || chase;
+    const i = chase ? 1 : race ? this.intensity : 0.15;
 
     if (s === 0) this.pad(bar, t);
     if (BASS[s] && (race || s % 4 === 0)) this.bass(bar.root, t, 0.16 + i * 0.08);
@@ -82,6 +115,8 @@ export class Music {
     if (race && i > 0.6 && (s === 4 || s === 12)) this.snare(t, 0.18);
     if (i > 0.3 || !race) this.arp(bar.chord[ARP[s]] * (i > 0.75 ? 2 : 1), t, race ? 0.035 + i * 0.03 : 0.025);
     if (race && i > 0.84 && s % 8 === 6) this.bass(bar.root * 4, t, 0.05); // pursuit tension stab
+    if (race && this.tension > 0 && s % 4 === 2) this.bass(bar.root * 2, t, 0.03 + this.tension * 0.03); // heat: pulsing offbeat
+    if (chase && s % 2 === 0) this.hat(t, 0.08); // fallback chase: driving 8th hats
   }
 
   voice(type, freq, t, dur, vol, attack = 0.005) {

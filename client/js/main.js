@@ -35,6 +35,9 @@ async function start() {
     await nextFrame();
     game.start();
     boot.finish();
+    // The police chase track downloads after startup (never blocking it) and is decoded once
+    // audio unlocks on the first tap, long before the first pursuit.
+    setTimeout(() => game.audio.prefetch(), 2000);
     // Console handle for development builds only (?debug outside production).
     if (game.debug) window.nightVector = game;
   } catch (err) {

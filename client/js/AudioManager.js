@@ -1,7 +1,15 @@
 import { Music } from './Music.js';
+import { ChaseMusic } from './ChaseMusic.js';
+import { AUDIO } from './data/audio.js';
 
-// All sound is synthesized with the Web Audio API — no audio files.
-// Graph: [engine | sfx | music] buses → master → compressor → speakers.
+// Sound is synthesized with the Web Audio API; the only audio file is the police chase track.
+// Graph: [engine | sfx | music → duck] buses → master → compressor → speakers.
+//
+// Music is a small state machine the game drives with setMusicState():
+//   menu · normal · highIntensity · chase · wreck · gameOver
+// Game systems only report state (chase engaged/ended, heat level); this class decides what
+// plays, so there is exactly one music source audible at a time (plus short crossfades).
+const MUSIC_STATES = new Set(['menu', 'normal', 'highIntensity', 'chase', 'wreck', 'gameOver']);
 const ENGINE_GEARS = 6;
 const ENGINE_UPDATE_INTERVAL = 1 / 30;
 
@@ -21,6 +29,23 @@ export class AudioManager {
     this.lastGear = 0;
     this.tireLevel = 0;
     this.sirenNodes = null;
+    this.musicState = 'menu';
+    this.heatLevel = 0;
+    this.chase = null; // ChaseMusic, created with the context
+    this.chaseBytes = null; // prefetched encoded track (a promise), decoded once the context exists
+    this.radioTimer = 0;
+    this.stingers = 0; // debug: chase-start stingers played
+  }
+
+  // Fetch the chase track's bytes early (after startup, before the first race) without needing
+  // the AudioContext, which only exists after a user gesture. Missing file → null (fallback music).
+  prefetch() {
+    const cfg = AUDIO.policeChase;
+    if (this.chaseBytes || !cfg.enabled || !cfg.file || typeof fetch !== 'function') return;
+    this.chaseBytes = fetch(cfg.file)
+      .then(r => (r.ok ? r.arrayBuffer() : null))
+      .catch(() => null);
+    if (this.chase) this.chase.load(this.chaseBytes);
   }
 
   get muted() {
@@ -44,6 +69,9 @@ export class AudioManager {
     this.build();
     this.applySettings(this.settings);
     this.setMusicMode(this.musicMode);
+    const state = this.musicState;
+    this.musicState = 'menu';
+    this.setMusicState(state === 'chase' ? 'normal' : state);
   }
 
   build() {
@@ -56,7 +84,12 @@ export class AudioManager {
     this.master.connect(comp);
     comp.connect(ctx.destination);
     this.buses = { engine: ctx.createGain(), sfx: ctx.createGain(), music: ctx.createGain() };
-    for (const k in this.buses) this.buses[k].connect(this.master);
+    this.buses.engine.connect(this.master);
+    this.buses.sfx.connect(this.master);
+    // Music passes a duck stage: collisions and stingers dip it for a moment, never the engine.
+    this.musicDuck = ctx.createGain();
+    this.buses.music.connect(this.musicDuck);
+    this.musicDuck.connect(this.master);
 
     const len = ctx.sampleRate * 2;
     this.noiseBuffer = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -127,6 +160,9 @@ export class AudioManager {
     };
     this.loops = { wind: loop('bandpass', 700, 0.7), tires: loop('bandpass', 1900, 4), rain: loop('highpass', 2500, 0.5) };
     this.music = new Music(ctx, this.buses.music, this.noiseBuffer);
+    this.chase = new ChaseMusic(ctx, this.buses.music, AUDIO.policeChase);
+    this.prefetch();
+    this.chase.load(this.chaseBytes);
   }
 
   applySettings(settings) {
@@ -146,9 +182,140 @@ export class AudioManager {
     if (this.ctx && this.ctx.state === 'running') this.ctx.suspend();
   }
 
+  // Back from pause or background: fade the master in instead of blasting straight back.
   resume() {
+    const wasPaused = this.paused;
     this.paused = false;
-    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    if (!this.ctx) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    if (wasPaused && !this.settings.muted) {
+      const t = this.ctx.currentTime;
+      const g = this.master.gain;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(0, t);
+      g.linearRampToValueAtTime(this.settings.master, t + AUDIO.mix.resumeFade);
+    }
+  }
+
+  // ---------------------------------------------------------------- music state
+
+  setMusicState(state, opts = {}) {
+    if (!MUSIC_STATES.has(state)) return;
+    const prev = this.musicState;
+    if (state === prev && !opts.reset) return;
+    this.musicState = state;
+    if (!this.ctx) return; // applied when the context is built (unlock)
+    const c = AUDIO.policeChase;
+    const chase = this.chase;
+
+    if (opts.reset) {
+      // A new run: nothing from the previous one may still be playing.
+      chase.kill();
+      this.siren(false);
+      this.setHeat(0);
+      this.music.fadeTo(1, 0.3);
+    }
+
+    if (state === 'chase') {
+      this.chaseStinger();
+      if (chase.start(c.fadeIn)) {
+        this.music.fadeTo(0, c.normalFadeOut);
+      } else {
+        this.music.setMode('chase'); // no track (missing / still decoding): synth chase mode
+        this.music.fadeTo(1, 0.3);
+      }
+      this.music.setTension(0);
+      return;
+    }
+
+    if (prev === 'chase' && (state === 'normal' || state === 'highIntensity')) {
+      // Chase over while still driving: the track carries on a moment after an escape, then
+      // fades; normal music comes back underneath (a moment of release).
+      const escaped = opts.after === 'escape';
+      const hold = escaped ? c.escapeHold : 0;
+      const fade = escaped ? c.fadeOut : c.bustFadeOut;
+      chase.stop(fade, hold);
+      this.music.setMode('race');
+      this.music.fadeTo(1, c.normalReturn, hold + fade * 0.4);
+      this.setHeat(this.heatLevel);
+      return;
+    }
+
+    if (state === 'normal' || state === 'highIntensity') {
+      this.setMusicMode('race');
+      if (prev !== 'normal' && prev !== 'highIntensity') this.music.fadeTo(1, 0.4);
+      return;
+    }
+
+    if (state === 'wreck') {
+      chase.stop(c.crashFadeOut);
+      this.setMusicMode('wreck');
+      this.music.fadeTo(1, 0.5);
+      return;
+    }
+
+    // menu / gameOver: the chase track is gone for good.
+    chase.kill();
+    this.siren(false);
+    this.sirenShown = 0;
+    this.setMusicMode('menu');
+    this.music.setTension(0);
+    this.music.fadeTo(1, state === 'gameOver' ? 1.2 : 0.5);
+  }
+
+  // Heat level (0–5) from the police system: tension in the normal music before a chase, the
+  // chase track's filter/level during one, and how loud sirens get.
+  setHeat(level) {
+    this.heatLevel = level;
+    if (!this.ctx) return;
+    this.chase.setHeat(level);
+    const tense = this.musicState !== 'chase' && level >= AUDIO.heatCues.tensionFromStar;
+    this.music.setTension(tense ? Math.min(1, (level - 1) / 3) : 0);
+    if (this.sirenNodes) this.sirenNodes.yelp.gain.setTargetAtTime(level >= AUDIO.mix.secondSirenFrom ? 1 : 0, this.ctx.currentTime, 0.4);
+    this.sirenShown = -1; // re-apply the siren ceiling
+  }
+
+  // Per frame: stop finished fades, and an occasional police radio squelch while wanted but not
+  // (yet) chased.
+  update(dt, racing) {
+    if (!this.ctx) return;
+    this.chase.tick();
+    if (racing && this.heatLevel >= 1 && this.musicState !== 'chase' && !this.sirenNodes) {
+      this.radioTimer -= dt;
+      if (this.radioTimer <= 0) {
+        const [a, b] = AUDIO.heatCues.radioEvery;
+        if (this.radioTimer > -1) this.policeRadio();
+        this.radioTimer = a + Math.random() * (b - a);
+      }
+    } else {
+      this.radioTimer = 2 + Math.random() * 3;
+    }
+  }
+
+  // Briefly lower the music (collisions, stingers).
+  duck(level, time) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const g = this.musicDuck.gain;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(level, t);
+    g.linearRampToValueAtTime(1, t + time);
+  }
+
+  debugInfo() {
+    return {
+      ctx: this.ctx ? this.ctx.state : 'none',
+      state: this.musicState,
+      heat: this.heatLevel,
+      track: this.chase ? this.chase.status : 'none',
+      trackPlaying: Boolean(this.chase && this.chase.playing),
+      trackSource: Boolean(this.chase && this.chase.source),
+      trackStarts: this.chase ? this.chase.starts : 0,
+      synthLevel: this.music ? this.music.level : 0,
+      synthMode: this.music ? this.music.mode : '',
+      siren: Boolean(this.sirenNodes),
+      stingers: this.stingers,
+    };
   }
 
   setMusicMode(mode) {
@@ -156,8 +323,12 @@ export class AudioManager {
     if (this.music) this.music.setMode(mode);
   }
 
+  // Race intensity 0–1 for the synth layers; also labels normal vs high-intensity driving.
   updateMusic(intensity) {
     if (this.music) this.music.setIntensity(intensity);
+    const s = this.musicState;
+    if (s === 'normal' && intensity > 0.75) this.musicState = 'highIntensity';
+    else if (s === 'highIntensity' && intensity < 0.6) this.musicState = 'normal';
   }
 
   // Simulated gearbox: rpm sweeps up inside each gear and drops on each shift.
@@ -223,19 +394,37 @@ export class AudioManager {
       filter.frequency.value = 2200;
       const gain = ctx.createGain();
       gain.gain.value = 0;
-      gain.gain.setTargetAtTime(0.035, t, 0.3);
       osc.connect(filter);
       filter.connect(gain);
       gain.connect(this.buses.sfx);
+      // Second unit / high heat: a faster yelp an octave-ish up, mixed in from secondSirenFrom.
+      const osc2 = ctx.createOscillator();
+      osc2.type = 'square';
+      osc2.frequency.value = 1250;
+      const lfo2 = ctx.createOscillator();
+      lfo2.frequency.value = 3.2;
+      const depth2 = ctx.createGain();
+      depth2.gain.value = 220;
+      lfo2.connect(depth2);
+      depth2.connect(osc2.frequency);
+      const yelp = ctx.createGain();
+      yelp.gain.value = this.heatLevel >= AUDIO.mix.secondSirenFrom ? 1 : 0;
+      const yelpLevel = ctx.createGain();
+      yelpLevel.gain.value = 0.55;
+      osc2.connect(yelpLevel);
+      yelpLevel.connect(yelp);
+      yelp.connect(filter);
       osc.start();
       lfo.start();
-      this.sirenNodes = { osc, lfo, gain };
+      osc2.start();
+      lfo2.start();
+      this.sirenNodes = { osc, lfo, osc2, lfo2, gain, yelp };
+      this.sirenShown = -1;
     } else if (!on && this.sirenNodes) {
       const n = this.sirenNodes;
       this.sirenNodes = null;
       n.gain.gain.setTargetAtTime(0, t, 0.2);
-      n.osc.stop(t + 1);
-      n.lfo.stop(t + 1);
+      for (const o of [n.osc, n.lfo, n.osc2, n.lfo2]) o.stop(t + 1);
     }
   }
 
@@ -251,7 +440,11 @@ export class AudioManager {
     if (!this.sirenNodes) this.siren(true);
     if (Math.abs(level - (this.sirenShown || 0)) < 0.05) return;
     this.sirenShown = level;
-    this.sirenNodes.gain.gain.setTargetAtTime(0.012 + 0.045 * level, this.ctx.currentTime, 0.25);
+    // Distance sets the level between a faint far-off wail and the heat's ceiling; while the
+    // chase track plays, sirens sit a little under it.
+    const m = AUDIO.mix;
+    const max = m.sirenMax[Math.max(1, this.heatLevel)] * (this.chase && this.chase.playing ? m.sirenUnderChaseMusic : 1);
+    this.sirenNodes.gain.gain.setTargetAtTime(m.sirenMin + (max - m.sirenMin) * level, this.ctx.currentTime, 0.25);
   }
 
   // Heat star gained: a rising two-note stinger, higher with every star.
@@ -266,6 +459,26 @@ export class AudioManager {
     this.tone(1200, 0.06, 'square', 0.05);
     this.tone(1500, 0.06, 'square', 0.05, 0.09);
     this.noise(0.25, 'bandpass', 1800, 900, 0.04, 0.2, 2);
+  }
+
+  // Chase start stinger (NOT CHASED → CHASE ACTIVE only): a rising whoosh into two low hits,
+  // with the music dipped under it.
+  chaseStinger() {
+    if (!this.ctx || this.paused) return;
+    this.stingers++;
+    this.duck(AUDIO.mix.stingerDuck, 0.9);
+    this.noise(0.45, 'bandpass', 400, 3200, 0.1, 0, 1.2);
+    this.tone(82, 0.35, 'sawtooth', 0.12, 0.42, 55);
+    this.tone(123, 0.3, 'square', 0.05, 0.42);
+    this.noise(0.3, 'lowpass', 1200, 200, 0.2, 0.42, 1);
+  }
+
+  // Wanted but not chased: a faint, filtered radio squelch — "they're looking for you".
+  policeRadio() {
+    this.noise(0.08, 'bandpass', 2200, 1800, 0.035, 0, 4);
+    this.tone(1650, 0.05, 'square', 0.018, 0.1);
+    this.noise(0.35, 'bandpass', 1500, 1100, 0.025, 0.16, 3);
+    this.noise(0.06, 'bandpass', 2400, 2000, 0.03, 0.55, 4);
   }
 
   // Ram warning / impact whoosh from the side.
@@ -341,6 +554,7 @@ export class AudioManager {
   }
 
   crash(intensity = 1) {
+    this.duck(AUDIO.mix.crashDuck, AUDIO.mix.crashDuckTime); // the hit takes priority for a moment
     this.noise(0.55, 'lowpass', 3000, 150, 0.9 * intensity);
     this.tone(120, 0.4, 'sine', 0.6 * intensity, 0, 35);
     this.tone(700 + Math.random() * 400, 0.15, 'square', 0.07 * intensity);
@@ -415,8 +629,9 @@ export class AudioManager {
   }
 
   escape() {
-    const notes = [523, 659, 784, 1047, 1319];
-    for (let i = 0; i < notes.length; i++) this.tone(notes[i], 0.2, 'triangle', 0.1, i * 0.06);
+    this.noise(1.1, 'bandpass', 2600, 300, 0.07, 0, 0.9);
+    const notes = [392, 494, 587, 784];
+    for (let i = 0; i < notes.length; i++) this.tone(notes[i], 0.9, 'triangle', 0.06, i * 0.05);
   }
 
   thunder(intensity) {

@@ -4,7 +4,7 @@ import { join, relative, sep } from 'node:path';
 
 // Files the game needs to run offline. Everything else (licenses, the social preview image,
 // the service worker itself) is fetched normally.
-const INCLUDE = /\.(html|js|css|webmanifest|woff2|png|svg)$/i;
+const INCLUDE = /\.(html|js|css|webmanifest|woff2|png|svg|mp3|m4a|ogg|wav)$/i;
 const EXCLUDE = new Set(['sw.js', 'precache-manifest.js']);
 
 async function walk(dir) {

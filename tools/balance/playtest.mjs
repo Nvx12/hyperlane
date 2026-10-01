@@ -52,6 +52,9 @@ for (const type of TYPES) {
   const firstVisible = rs.map(r => r.firstPoliceVisible).filter(v => v !== null);
   console.log(`\n== ${type} (${rs.length} runs) · run length median ${med(rs.map(r => r.secs))}s · score/ceiling max ${Math.max(...rs.map(r => r.scoreHeadroom || 0)).toFixed(3)}`);
   console.log(`   events/run ${mean(rs.map(r => r.events)).toFixed(1)} · per minute ${mean(rs.map(r => r.events / Math.max(1, r.secs / 60))).toFixed(2)} · kinds ${JSON.stringify(rs.reduce((m, r) => { for (const k of r.eventKinds) m[k] = (m[k] || 0) + 1; return m; }, {}))}`);
+  const delays = rs.flatMap(r => r.engageDelays || []);
+  const seenDelays = delays.filter(d => d !== null);
+  console.log(`   engagement: ${delays.length} chases · on screen after median ${med(seenDelays)?.toFixed(1)}s (max ${seenDelays.length ? Math.max(...seenDelays).toFixed(1) : '-'}s) · ended before any unit was seen: ${delays.filter(d => d === null).length}`);
   console.log(`   police: chase in ${share(r => r.chases > 0)} of runs · first chase median ${med(firstPolice)}s · police car on screen in ${share(r => r.firstPoliceVisible !== null)} (first ${med(firstVisible)}s) · escapes ${mean(rs.map(r => r.escapes)).toFixed(2)}/run · busted ${mean(rs.map(r => r.busted)).toFixed(2)}/run`);
   const tally = key => JSON.stringify(rs.reduce((m, r) => { for (const [k, v] of Object.entries(r[key])) m[k] = (m[k] || 0) + v; return m; }, {}));
   console.log(`   crashes by cause (all runs): ${tally('crashes')} · event results ${JSON.stringify(rs.flatMap(r => r.eventResults).reduce((m, k) => { m[k] = (m[k] || 0) + 1; return m; }, {}))}`);
@@ -169,6 +172,17 @@ function playRun({ profile, maxSeconds }) {
     rivals: log.filter(e => /rival:start/.test(e.what)).length,
     firstPolice: firstPoliceEv ? Math.round(firstPoliceEv.t) : null,
     firstPoliceVisible,
+    // Seconds from each chase start to the first unit on screen (engaged); null = never engaged.
+    engageDelays: (() => {
+      const out = [];
+      let start = null;
+      for (const e of log) {
+        if (/^chase:start/.test(e.what)) start = e.t;
+        else if (e.what === 'chase:engaged' && start !== null) { out.push(e.t - start); start = null; }
+        else if (/^chase:(escaped|busted)/.test(e.what) && start !== null) { out.push(null); start = null; }
+      }
+      return out;
+    })(),
     maxHeat,
     longestQuiet: Math.round(longest),
     quietShare: secs ? quiet / secs : 0,

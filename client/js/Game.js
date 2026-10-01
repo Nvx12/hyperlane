@@ -14,6 +14,7 @@ import { SkillSystem } from './SkillSystem.js';
 import { ScoreSystem } from './ScoreSystem.js';
 import { EventDirector } from './EventDirector.js';
 import { PoliceSystem } from './PoliceSystem.js';
+import { Signals } from './Signals.js';
 import { RivalRacer } from './RivalRacer.js';
 import { RunDirector } from './RunDirector.js';
 import { DevPanel } from './DevPanel.js';
@@ -101,6 +102,8 @@ export class Game {
     this.weather = new Weather(this.audio);
     // Run pacing: telemetry (dev) → police/heat → rival → events → the director over all of them.
     this.telemetry = [];
+    this.signals = new Signals();
+    this.wireAudio();
     this.police = new PoliceSystem(this);
     this.rival = new RivalRacer(this);
     this.events = new EventDirector(this);
@@ -237,14 +240,8 @@ export class Game {
     // Backgrounding (app switch, phone lock, incoming call): pause the race and silence audio.
     // rAF stops on its own while hidden, so nothing else keeps running.
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        this.pause();
-        this.audio.suspend();
-        this.store.save();
-      } else {
-        this.lastTime = performance.now();
-        if (this.state !== STATE.PAUSED) this.audio.resume();
-      }
+      if (document.hidden) this.onBackground();
+      else this.onForeground();
     });
     window.addEventListener('online', () => {
       if (!this.isRaceActive()) this.sync.flush();
@@ -253,6 +250,34 @@ export class Game {
       this.pause();
       this.store.save();
     });
+  }
+
+  // Gameplay state → music state, in one place. The police report what happens; the audio
+  // manager decides what plays. (Chase music only once a unit is physically on screen.)
+  wireAudio() {
+    const s = this.signals;
+    s.on('heat:level', ({ level }) => this.audio.setHeat(level));
+    s.on('chase:engaged', () => {
+      if (this.state === STATE.PLAYING) this.audio.setMusicState('chase');
+    });
+    s.on('chase:end', ({ escaped, engaged, cancelled }) => {
+      if (!engaged || this.state !== STATE.PLAYING) return;
+      this.audio.setMusicState('normal', { after: escaped ? 'escape' : cancelled ? 'cancel' : 'bust' });
+    });
+  }
+
+  // App lifecycle (browser visibility today; Capacitor's pause/resume events later call the same
+  // two methods): a race pauses and all audio is suspended; coming back never auto-plays a race,
+  // and the menu fades back in.
+  onBackground() {
+    this.pause();
+    this.audio.suspend();
+    this.store.save();
+  }
+
+  onForeground() {
+    this.lastTime = performance.now();
+    if (this.state !== STATE.PAUSED) this.audio.resume();
   }
 
   resetRunState() {
@@ -452,7 +477,7 @@ export class Game {
     this.environment.start(this.selectedEnv, false, false);
     this.weather.start(getEnvironment(this.selectedEnv), false);
     this.audio.resume();
-    this.audio.setMusicMode('menu');
+    this.audio.setMusicState('menu');
     this.ui.setHudVisible(false);
     this.hideIntro();
     this.menus.open(screen);
@@ -481,7 +506,7 @@ export class Game {
     // First race: the interactive tutorial starts at GO instead of a text tip.
     this.ui.showRaceIntro(ch ? `Challenge: beat ${ch.name}'s ${ch.score.toLocaleString('en-US')}`
       : !this.save.flags.tutorial ? 'GET READY' : tipFor(this.progress.stats.races));
-    this.audio.setMusicMode('race');
+    this.audio.setMusicState('normal', { reset: true });
     this.shell.refreshUpdateBanner();
     this.shell.checkOrientation();
     this.race.begin(this.car.id, this.selectedEnv); // background request; never blocks the countdown
@@ -728,7 +753,7 @@ export class Game {
     this.camera.fovOverride = 0.12; // pull in on the wreck
     this.audio.crash(1.2);
     this.audio.sirenLevel(0);
-    this.audio.setMusicMode('wreck');
+    this.audio.setMusicState('wreck');
     this.ui.hideBanner();
     this.hideIntro();
     this.ui.showCallout('WRECKED', 'danger');
@@ -755,7 +780,7 @@ export class Game {
     });
     this.audio.gameOver();
     this.shell.refreshUpdateBanner();
-    this.audio.setMusicMode('menu');
+    this.audio.setMusicState('gameOver');
   }
 
   // Live run snapshot (numbers only) used by goals and the mission tracker.
@@ -980,6 +1005,7 @@ export class Game {
     this.updateEffects(sim, kmh);
     this.audio.updateEngine(dt, kmh / GAME.ENGINE_TOP_KMH, p.throttle, p.boosting, this.isRaceActive(), p.slipstream, this.road.cameraInTunnel);
     this.audio.updateMusic(this.musicIntensity(kmh));
+    this.audio.update(dt, this.state === STATE.PLAYING);
     this.updateHud(dt);
     if (this.ui.hudVisible) this.ui.feed.update(dt);
 

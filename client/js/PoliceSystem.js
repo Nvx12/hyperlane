@@ -42,6 +42,7 @@ export class PoliceSystem {
     this.releaseTimer = 0; // short musical release after an escape
     this.stats = { maxHeat: 0, escapes: 0, escapeStars: 0, bestEscape: 0, busted: 0, chaseTime: 0, longestChase: 0 };
     this.game.audio.sirenLevel(0);
+    this.game.signals.emit('heat:level', { level: 0, up: false });
   }
 
   get active() {
@@ -77,6 +78,7 @@ export class PoliceSystem {
     this.level = level;
     if (level > this.stats.maxHeat) this.stats.maxHeat = level;
     g.telemetry.push({ t: g.runTime, what: `heat:${up ? 'up' : 'down'}:${level}` });
+    g.signals.emit('heat:level', { level, up });
     if (up && level >= 1) {
       g.ui.feed.push(`HEAT ${STARS(level)}`, 0, level >= 3 ? PRIORITY.IMPORTANT : PRIORITY.ROUTINE, 'danger', 'heat');
       g.audio.heatUp(level);
@@ -212,15 +214,21 @@ export class PoliceSystem {
       if (Math.abs(dz) < POLICE.PRESSURE_DZ) close = true;
       if (dz > 2 && dz < POLICE.VIEW_AHEAD * 0.7) ahead = true;
       if (dz <= 2) nearestBehind = Math.min(nearestBehind, -dz);
-      if (!c.engaged && dz > -8) {
+      // The chase is officially on once a unit is physically on screen (right behind, beside or
+      // ahead) — never just because one was dispatched somewhere behind.
+      if (!c.engaged && dz > POLICE.ENGAGE_DZ) {
         c.engaged = true;
         g.ui.feed.push(`PURSUIT ${STARS(this.level)}`, 0, PRIORITY.IMPORTANT, 'danger', 'police');
         g.telemetry.push({ t: g.runTime, what: 'chase:engaged' });
+        g.signals.emit('chase:engaged', { level: this.level });
       }
     }
     const top = Math.max(1, g.maxKmh);
     const rate = POLICE.ESCAPE_RATE[0] + (POLICE.ESCAPE_RATE[1] - POLICE.ESCAPE_RATE[0]) * clamp(kmh / top, 0, 1.2);
-    if (!seen) c.escape += rate * dt;
+    // You can't escape police you never saw: the meter waits for the first unit on screen
+    // (with a safety valve if traffic keeps every unit back).
+    if (!c.engaged && c.time < POLICE.ENGAGE_GRACE) c.escape = 0;
+    else if (!seen) c.escape += rate * dt;
     else if (close) c.escape = Math.max(0, c.escape - POLICE.ESCAPE_DRAIN * dt);
     else if (!ahead && nearestBehind > POLICE.ESCAPE_FROM_DZ) c.escape += rate * clamp((nearestBehind - POLICE.ESCAPE_FROM_DZ) / 15, 0.25, 0.8) * dt;
     else c.escape += POLICE.ESCAPE_BASE * dt;
@@ -268,6 +276,7 @@ export class PoliceSystem {
       car.lights = false;
     }
     this.units.length = 0;
+    g.signals.emit('chase:end', { escaped, engaged: c.engaged, level });
     if (escaped) {
       const points = POLICE.ESCAPE_POINTS[level];
       this.stats.escapes++;
@@ -431,9 +440,13 @@ export class PoliceSystem {
         }
         // A unit arriving from behind comes in fast enough to reach you once (you must SEE the
         // police); once engaged it is held to its heat speed limit, so you can shake it.
-        const cap = ai.state === 'approach' ? maxV * (ai.first ? 1.35 : 1.1)
-          : ai.state === 'overtake' ? maxV * 1.1
-            : ai.state === 'shadow' && dz < -2.5 ? maxV * 1.1 : maxV;
+        // Until the pursuit has engaged, closing units have no cap at all: they are off screen,
+        // so the catch-up is invisible, and even a boosting player gets caught up with once.
+        const unseen = this.chase && !this.chase.engaged && (ai.state === 'approach' || ai.state === 'shadow');
+        const cap = unseen ? Infinity
+          : ai.state === 'approach' ? maxV * (ai.first ? 1.35 : 1.1)
+            : ai.state === 'overtake' ? maxV * 1.1
+              : ai.state === 'shadow' && dz < -2.5 ? maxV * 1.1 : maxV;
         target = Math.min(target, cap);
         // Lane keeping while behind: stay next to you, never in your lane close up.
         if ((ai.state === 'approach' || ai.state === 'shadow') && car.targetLane === car.lane) {
@@ -450,7 +463,11 @@ export class PoliceSystem {
     }
 
     // Traffic: never through other cars. Stuck behind one → slow down and look for a gap.
-    const leader = g.traffic.findLeader(car);
+    // Exception: a pursuer that hasn't reached you yet and is still well behind the camera
+    // slips past slow traffic — nobody can see it, and otherwise it could be stuck back there
+    // (sirens and no police) until it falls off the road. It drives normally once close.
+    const hidden = car.role === 'unit' && this.chase && !this.chase.engaged && dz < POLICE.HIDDEN_DZ;
+    const leader = hidden ? null : g.traffic.findLeader(car);
     if (leader) {
       const gap = leader.z - leader.length * 0.5 - (car.z + car.length * 0.5);
       if (gap < 14) {
@@ -612,8 +629,10 @@ export class PoliceSystem {
       this.radar = null;
     }
     // Siren loudness follows the closest pursuing unit (heard before it is seen).
-    const target = nearest ? clamp(1 - best / 60, 0.15, 1) : 0;
-    this.sirenLevel += (target - this.sirenLevel) * Math.min(1, dt * 3);
+    // Silent once the race is over (wreck, results): no siren behind the crash.
+    const live = this.game.state === 'playing';
+    const target = nearest && live ? clamp(1 - best / 60, 0.15, 1) : 0;
+    this.sirenLevel = live ? this.sirenLevel + (target - this.sirenLevel) * Math.min(1, dt * 3) : 0;
     this.game.audio.sirenLevel(this.sirenLevel < 0.02 ? 0 : this.sirenLevel);
     this.alert = Math.max(0, this.alert - dt * 1.5);
   }
@@ -634,6 +653,24 @@ export class PoliceSystem {
   }
 
   // Debug/QA helpers (dev panel only).
+  // Dev panel: end the pursuit with no reward and no penalty (units give up, audio returns).
+  debugCancelChase() {
+    if (!this.chase) return;
+    const g = this.game;
+    const c = this.chase;
+    this.chase = null;
+    for (const car of this.units) {
+      car.role = 'retreat';
+      car.lights = false;
+    }
+    this.units.length = 0;
+    this.heat = Math.min(this.heat, HEAT.CHASE_AT - 1);
+    this.pendingChase = false;
+    g.signals.emit('chase:end', { escaped: false, engaged: c.engaged, level: this.level, cancelled: true });
+    this.refreshLevel();
+    g.director.onChaseEnd(false);
+  }
+
   debugSetHeat(stars) {
     this.setHeat(stars * HEAT.PER_STAR + (stars ? (stars === 5 ? 40 : 5) : 0));
   }
