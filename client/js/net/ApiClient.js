@@ -1,5 +1,6 @@
 import { ENV } from '../env.js';
 import { API_VERSION } from '../version.js';
+import { isNative } from '../native.js';
 
 // Thin fetch wrapper for the optional backend. Rules:
 //  - never throws: every call resolves to { ok, status, data, error, offline }
@@ -13,7 +14,10 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 export class ApiClient {
   constructor(base = `${ENV.apiBase}/v${API_VERSION}`) {
     this.base = base;
-    this.reachable = true; // last known server reachability (not just navigator.onLine)
+    // The native app has no same-origin server: without a configured API URL it plays fully
+    // offline (local profile and progress; the UI shows LOCAL ONLY) instead of calling itself.
+    this.disabled = isNative() && !ENV.apiConfigured;
+    this.reachable = !this.disabled; // last known server reachability (not just navigator.onLine)
     this.listeners = new Set();
   }
 
@@ -33,6 +37,7 @@ export class ApiClient {
 
   // retries: extra attempts after the first, for network errors / 5xx / 429 only.
   async request(method, path, { body, token, timeout = DEFAULT_TIMEOUT, retries = method === 'GET' ? 1 : 0, keepalive = false } = {}) {
+    if (this.disabled) return { ok: false, status: 0, data: null, error: { code: 'no_server', message: 'No game server is configured in this build.' }, offline: true };
     if (navigator.onLine === false) return { ok: false, status: 0, data: null, error: { code: 'offline', message: 'You are offline.' }, offline: true };
     let attempt = 0;
     for (;;) {

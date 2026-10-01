@@ -1,0 +1,38 @@
+// The Night Vector logo mark, shared by the PWA icon generator (generate-assets.mjs) and the
+// native app icon/splash generator (generate-native-assets.mjs).
+// The mark: a neon highway vanishing into a sunset, with a speed chevron ("V" for Vector).
+export function iconSvg({ padded = false, rounded = true, scale = null, background = true } = {}) {
+  const s = scale ?? (padded ? 0.72 : 0.9); // maskable icons keep the art inside the safe zone
+  const o = (1 - s) / 2 * 512;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#12082a"/><stop offset="0.55" stop-color="#3a1050"/><stop offset="1" stop-color="#06030d"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffd86b"/><stop offset="0.6" stop-color="#ff4f7a"/><stop offset="1" stop-color="#ff2d95" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="road" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a1730"/><stop offset="1" stop-color="#0c0a18"/>
+    </linearGradient>
+    <linearGradient id="chev" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="0.45" stop-color="#ff7ac8"/><stop offset="1" stop-color="#ff2d95"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <clipPath id="clip"><rect width="512" height="512" rx="${rounded ? 112 : 0}"/></clipPath>
+  </defs>
+  <g clip-path="url(#clip)">
+    ${background ? '<rect width="512" height="512" fill="url(#bg)"/>' : ''}
+    <g transform="translate(${o} ${o}) scale(${s})">
+      <circle cx="256" cy="232" r="120" fill="url(#sun)" opacity="0.9"/>
+      <rect x="0" y="232" width="512" height="280" fill="#0a0616"/>
+      <rect x="0" y="229" width="512" height="5" fill="#ff2d95" filter="url(#glow)" opacity="0.85"/>
+      <path d="M232 232 L280 232 L470 512 L42 512 Z" fill="url(#road)"/>
+      <path d="M232 232 L42 512" stroke="#22e6ff" stroke-width="10" filter="url(#glow)"/>
+      <path d="M280 232 L470 512" stroke="#22e6ff" stroke-width="10" filter="url(#glow)"/>
+      <path d="M256 250 L256 290 M256 320 L256 380 M256 420 L256 512" stroke="#eef8ff" stroke-width="9" stroke-linecap="round" opacity="0.85"/>
+      <path d="M150 110 L256 300 L362 110 L316 110 L256 222 L196 110 Z" fill="url(#chev)" filter="url(#glow)"/>
+    </g>
+  </g>
+</svg>`;
+}

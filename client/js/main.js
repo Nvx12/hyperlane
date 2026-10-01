@@ -1,4 +1,5 @@
 import { Game } from './Game.js';
+import { restoreFromNative } from './storage.js';
 
 const boot = window.NV_BOOT;
 // Yield so the loading bar can paint. rAF never fires in background tabs, so a timeout
@@ -26,7 +27,7 @@ async function start() {
     return;
   }
   boot.progress(35);
-  await loadFonts(2500);
+  await Promise.all([loadFonts(2500), restoreFromNative().catch(() => 0)]);
   boot.progress(65, 'BUILDING THE CITY…');
   await nextFrame(); // let the progress paint before the (synchronous) sprite generation
   try {
@@ -35,6 +36,7 @@ async function start() {
     await nextFrame();
     game.start();
     boot.finish();
+    game.native.hideSplash();
     // The police chase track downloads after startup (never blocking it) and is decoded once
     // audio unlocks on the first tap, long before the first pursuit.
     setTimeout(() => game.audio.prefetch(), 2000);

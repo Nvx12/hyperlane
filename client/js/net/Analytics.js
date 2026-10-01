@@ -76,6 +76,7 @@ export class Analytics {
       return;
     }
     const batch = this.queue.splice(0, BATCH_MAX);
+    if (this.api.disabled) return; // native build without a server: nowhere to send to
     const body = { clientId: this.cid, appVersion: GAME_VERSION, events: batch };
     if (unloading && navigator.sendBeacon) {
       // text/plain keeps it a "simple" request (no CORS preflight) — the server accepts it.

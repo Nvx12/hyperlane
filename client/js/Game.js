@@ -15,6 +15,7 @@ import { ScoreSystem } from './ScoreSystem.js';
 import { EventDirector } from './EventDirector.js';
 import { PoliceSystem } from './PoliceSystem.js';
 import { Signals } from './Signals.js';
+import { NativeShell } from './NativeShell.js';
 import { RivalRacer } from './RivalRacer.js';
 import { RunDirector } from './RunDirector.js';
 import { DevPanel } from './DevPanel.js';
@@ -135,6 +136,7 @@ export class Game {
       uiSound: kind => this.audio.ui(kind),
     });
     this.shell = new AppShell(this);
+    this.native = new NativeShell(this);
     // Optional backend. Only ever used from menus and at run end — never in the frame loop.
     this.api = new ApiClient();
     this.players = new PlayerService(this.api);
@@ -230,7 +232,9 @@ export class Game {
     this.tour = false;
     this.resetRunState();
 
-    this.backNav = new BackNav(() => this.handleBack());
+    // In the native app the hardware Back key comes from the shell (NativeShell.back), so the
+    // browser history guard isn't used there.
+    this.backNav = new BackNav(() => this.handleBack(), !this.native.active);
     this.immersiveTried = false;
 
     this.frame = this.frame.bind(this);
@@ -371,6 +375,7 @@ export class Game {
     this.ui.setMuted(this.save.settings.muted);
     this.enterMenu();
     this.shell.start();
+    this.native.start();
     this.lastTime = performance.now();
     requestAnimationFrame(this.frame);
     // Billboards use the display font; redraw them once it has loaded.
@@ -590,7 +595,7 @@ export class Game {
       this.ui.toast('Link copied', 'Send it to a friend to challenge them', 'unlock');
     } else if (result === 'failed') {
       // Clipboard API blocked (embedded browsers, strict settings): show the link to copy by hand.
-      if (this.ui.showShareFallback(`${text} ${url}`)) {
+      if (this.ui.showShareFallback(url ? `${text} ${url}` : text)) {
         outcome = 'copied';
         this.ui.toast('Link copied', 'Send it to a friend to challenge them', 'unlock');
       }

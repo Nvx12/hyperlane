@@ -5,8 +5,9 @@
 // the player is never trapped.
 
 export class BackNav {
-  constructor(onBack) {
+  constructor(onBack, enabled = true) {
     this.onBack = onBack;
+    this.enabled = enabled;
     this.armed = false;
     this.ignore = 0; // popstates we caused ourselves (releasing the guard)
     window.addEventListener('popstate', () => {
@@ -21,6 +22,7 @@ export class BackNav {
 
   // Called every frame with whether a guard is wanted; touches history only on change.
   sync(wanted) {
+    if (!this.enabled) return;
     if (wanted && !this.armed) {
       history.pushState({ nvGuard: true }, '');
       this.armed = true;

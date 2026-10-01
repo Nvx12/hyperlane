@@ -1,0 +1,33 @@
+{
+  "appId": "io.github.nvx12.nightvector",
+  "appName": "Night Vector",
+  "webDir": "dist-app",
+  "backgroundColor": "#06030d",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": false
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#06030d",
+    "scrollEnabled": false,
+    "allowsLinkPreview": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 4000,
+      "launchAutoHide": true,
+      "launchFadeOutDuration": 200,
+      "backgroundColor": "#06030d",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP",
+      "splashFullScreen": true,
+      "splashImmersive": true
+    },
+    "SystemBars": {
+      "initialViewportFitValueHint": "cover",
+      "insetsHandling": "css",
+      "style": "DARK"
+    }
+  }
+}

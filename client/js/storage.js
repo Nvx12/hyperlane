@@ -1,3 +1,5 @@
+import { hasPlugin, call } from './native.js';
+
 // The only module that touches Web Storage. Every call is safe: storage can be missing
 // (private mode, blocked site data, embedded webviews) or full, and the game must keep running
 // — reads then return the fallback and writes report false. Keys live in KEYS so every piece of
@@ -14,6 +16,23 @@ export const KEYS = {
   ghost: 'nightvector.ghost', // Ghost: best-run replay samples
   analyticsId: 'nightvector.cid', // Analytics: random per-install id
 };
+
+// Native app: write-through mirror in the OS key-value store (see restoreFromNative).
+const mirror = () => hasPlugin('Preferences');
+
+// Native app, before the game reads anything: any persisted key missing from WebView storage
+// (evicted by the OS, or a new WebView data directory) is restored from the mirror. Keys that
+// exist in WebView storage are left alone — they are the newest copy.
+export async function restoreFromNative() {
+  if (!mirror()) return 0;
+  let restored = 0;
+  for (const key of Object.values(KEYS)) {
+    if (readText(key) !== null) continue;
+    const res = await call('Preferences', 'get', { key });
+    if (res && typeof res.value === 'string' && writeLocal(key, res.value)) restored++;
+  }
+  return restored;
+}
 
 function area() {
   try {
@@ -32,7 +51,7 @@ export function readText(key) {
   }
 }
 
-export function writeText(key, value) {
+function writeLocal(key, value) {
   try {
     const s = area();
     if (!s) return false;
@@ -41,6 +60,12 @@ export function writeText(key, value) {
   } catch {
     return false;
   }
+}
+
+export function writeText(key, value) {
+  const ok = writeLocal(key, value);
+  if (mirror()) call('Preferences', 'set', { key, value }); // fire-and-forget; saves are event-driven
+  return ok || mirror();
 }
 
 export function readJson(key, fallback = null) {
@@ -62,4 +87,5 @@ export function remove(key) {
   } catch {
     /* ignore */
   }
+  if (mirror()) call('Preferences', 'remove', { key });
 }

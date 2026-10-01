@@ -16,12 +16,31 @@
     "lint": "eslint .",
     "test": "node --no-warnings=ExperimentalWarning --test \"tests/unit/*.test.js\" \"tests/api/*.test.js\"",
     "e2e": "playwright test",
-    "stats": "node --no-warnings=ExperimentalWarning server/scripts/stats.js"
+    "stats": "node --no-warnings=ExperimentalWarning server/scripts/stats.js",
+    "build:app": "node tools/build.mjs --target=native",
+    "mobile": "npm run build:app && cap sync",
+    "android": "npm run build:app && cap sync android && cap open android",
+    "android:apk": "npm run build:app && cap sync android && node tools/android.mjs apk",
+    "android:aab": "npm run build:app && cap sync android && node tools/android.mjs aab",
+    "ios": "npm run build:app && cap sync ios && cap open ios",
+    "assets:native": "node tools/generate-native-assets.mjs"
   },
   "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/cli": "8.5.2",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
     "eslint": "^10.11.0",
     "globals": "^17.12.0"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/app": "8.1.1",
+    "@capacitor/core": "8.5.2",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/ios": "8.5.2",
+    "@capacitor/network": "8.0.1",
+    "@capacitor/preferences": "8.0.1",
+    "@capacitor/splash-screen": "8.0.2"
   }
 }
