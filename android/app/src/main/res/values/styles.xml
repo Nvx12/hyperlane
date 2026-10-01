@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Night Vector is always dark: every window surface uses the game's background colour, so
+         there is never a white flash between the splash, the WebView and the first frame. -->
+    <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/nv_background</item>
+        <item name="colorPrimaryDark">@color/nv_background</item>
+        <item name="colorAccent">@color/nv_accent</item>
+        <item name="android:windowBackground">@color/nv_background</item>
+    </style>
+
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:background">@null</item>
+        <item name="android:windowBackground">@color/nv_background</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+
+    <!-- Launch theme. Android 12+: the system splash shows the app icon on the game's background.
+         Older Android: the branded splash drawable (generated from resources/splash.png). -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/nv_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+        <item name="android:background">@drawable/splash</item>
+    </style>
+</resources>

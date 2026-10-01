@@ -1,0 +1,82 @@
+apply plugin: 'com.android.application'
+
+// One version for the web game and the app: versionName comes from package.json, and
+// versionCode is derived from it (MAJOR*10000 + MINOR*100 + PATCH, e.g. 1.2.0 → 10200), so it
+// always increases with the version. Override for a re-upload: -PnvVersionCode=10201
+def pkg = new groovy.json.JsonSlurper().parse(file('../../package.json'))
+def semver = pkg.version.tokenize('.-')
+def derivedVersionCode = semver[0].toInteger() * 10000 + semver[1].toInteger() * 100 + semver[2].toInteger()
+def nvVersionCode = project.hasProperty('nvVersionCode') ? project.property('nvVersionCode').toInteger() : derivedVersionCode
+
+// Release signing, never committed: android/keystore.properties (git-ignored) or environment
+// variables NV_KEYSTORE_FILE / NV_KEYSTORE_PASSWORD / NV_KEY_ALIAS / NV_KEY_PASSWORD.
+// Without them, release builds are produced unsigned (sign before uploading). See README.
+def signingProps = new Properties()
+def signingFile = rootProject.file('keystore.properties')
+if (signingFile.exists()) signingFile.withInputStream { signingProps.load(it) }
+def signingValue = { String prop, String env -> signingProps.getProperty(prop) ?: System.getenv(env) }
+def releaseStoreFile = signingValue('storeFile', 'NV_KEYSTORE_FILE')
+
+android {
+    namespace = "io.github.nvx12.nightvector"
+    compileSdk = rootProject.ext.compileSdkVersion
+    signingConfigs {
+        if (releaseStoreFile) {
+            release {
+                storeFile rootProject.file(releaseStoreFile)
+                storePassword signingValue('storePassword', 'NV_KEYSTORE_PASSWORD')
+                keyAlias signingValue('keyAlias', 'NV_KEY_ALIAS')
+                keyPassword signingValue('keyPassword', 'NV_KEY_PASSWORD')
+            }
+        }
+    }
+    defaultConfig {
+        applicationId "io.github.nvx12.nightvector"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode nvVersionCode
+        versionName pkg.version
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (releaseStoreFile) signingConfig signingConfigs.release
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

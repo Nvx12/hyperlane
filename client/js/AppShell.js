@@ -1,5 +1,6 @@
 import { Pwa } from './pwa.js';
 import { fullscreen } from './fullscreen.js';
+import { isNative } from './native.js';
 
 // App-level chrome around the game: installability, updates, fullscreen and connectivity.
 // None of it touches gameplay; the game only tells the shell when it's a safe moment.
@@ -10,6 +11,7 @@ export class AppShell {
     this.installBtn = document.getElementById('install-btn');
     this.netChip = document.getElementById('net-status');
     this.listeners = new Set();
+    this.nativeOnline = null; // native app: connectivity reported by the OS (null = unknown)
     this.pwa = new Pwa({
       onUpdateReady: () => this.refreshUpdateBanner(),
       onInstallAvailable: available => {
@@ -53,7 +55,20 @@ export class AppShell {
   }
 
   get online() {
+    if (this.nativeOnline !== null) return this.nativeOnline;
     return navigator.onLine !== false;
+  }
+
+  // Native network events (NativeShell). On reconnect the same recovery as the browser's
+  // 'online' event: re-check the server and flush queued progress — from menus only.
+  setNativeOnline(connected) {
+    const was = this.online;
+    this.nativeOnline = connected;
+    this.syncNetwork();
+    if (connected && !was && !this.game.isRaceActive()) {
+      this.pingServer(true);
+      if (this.game.sync) this.game.sync.flush();
+    }
   }
 
   // Cheap reachability ping from menus (never during a race), at most every 30 s while down.
@@ -95,7 +110,7 @@ export class AppShell {
   // Best-effort fullscreen + landscape lock from a user gesture (Android browsers). iOS Safari has
   // no element fullscreen for pages; there the rotate prompt and "Add to Home Screen" cover it.
   enterImmersive() {
-    if (!fullscreen.supported || fullscreen.active) return;
+    if (isNative() || !fullscreen.supported || fullscreen.active) return; // the app is immersive natively
     fullscreen.enter().catch(() => {});
   }
 

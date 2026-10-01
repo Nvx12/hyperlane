@@ -330,6 +330,101 @@ Put a TLS-terminating reverse proxy in front (Caddy, nginx or a platform load ba
 
 **Scaling:** one instance comfortably serves a small-to-medium player base, since the game is static and the API is tiny. Running several instances would need the database and rate limiter moved to shared services; that is intentionally out of scope.
 
+## Mobile Development (Android / iOS)
+
+One game, three shells. The web game in `client/` is the only game code; Capacitor wraps a build of it in native Android and iOS apps.
+
+```
+client/ (the game) ──npm run build──────► dist/      → Node server → web / PWA
+                   └─npm run build:app──► dist-app/  → npx cap sync → android/ · ios/
+```
+
+- **App ID:** `io.github.nvx12.nightvector` (Android package and iOS bundle ID), display name **Night Vector**. This ID is permanent once the app is published: don't change it.
+- **Version:** taken from `package.json` (`1.2.0`). Android `versionCode` is derived from it (MAJOR×10000 + MINOR×100 + PATCH → `10200`); iOS uses the same marketing version and build number. Bump `package.json` for each store release.
+- **Native layer:** `client/js/native.js` (the only code that talks to Capacitor, through the injected `window.Capacitor` bridge; a no-op in browsers) and `client/js/NativeShell.js` (app pause/resume, hardware Back, network status, splash). Only events cross the bridge; nothing per frame.
+
+### Requirements
+
+| | Version used for this migration |
+|---|---|
+| Node | 22.13+ (24.15 used); npm 11 |
+| Capacitor | 8.5.2 (`@capacitor/core`, `cli`, `android`, `ios`) |
+| Plugins | `@capacitor/app` 8.1.1 · `haptics` 8.0.2 · `network` 8.0.1 · `preferences` 8.0.1 · `splash-screen` 8.0.2 |
+| JDK | 21 (Eclipse Temurin 21.0.12 used). Android Studio's bundled JBR also works. |
+| Android | Android Studio (latest) or the SDK: platform 36, build-tools 35 (Gradle installs missing SDK parts on first build). Gradle 8.14.3 via the wrapper. minSdk 24 · targetSdk 36. |
+| iOS | macOS with Xcode 16+ (iOS 15+ deployment target). Swift Package Manager (no CocoaPods). |
+
+### Commands
+
+| Task | Command |
+|---|---|
+| Web development (unchanged) | `npm run dev` → http://localhost:8080 |
+| Web/PWA production build | `npm run build` → `dist/` |
+| Native web build | `npm run build:app` → `dist-app/` |
+| Native build + sync both platforms | `npm run mobile` |
+| Open in Android Studio | `npm run android` |
+| **Debug APK** | `npm run android:apk` → `android/app/build/outputs/apk/debug/app-debug.apk` |
+| **Release AAB** (Google Play) | `npm run android:aab` → `android/app/build/outputs/bundle/release/app-release.aab` |
+| Open in Xcode (macOS) | `npm run ios` |
+| Regenerate icons and splash | `npm run assets:native` |
+
+`android:apk` / `android:aab` run `tools/android.mjs`, which finds a JDK 21 and the Android SDK on its own (no global `JAVA_HOME` change needed) and prints the exact output path.
+
+**Everyday workflow:** edit `client/` → `npm run android:apk` (or `npm run mobile` and press Run in Android Studio). Never edit `android/app/src/main/assets/public` or `ios/App/App/public`: they are generated copies.
+
+### Environment (public build-time values)
+
+The server fills the web HTML at request time; the app has no server, so `npm run build:app` bakes these in. **Everything in the app is public — never put secrets here.**
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `NV_APP_ENV` | `production` | `development` · `staging` · `production`. Debug tools exist only in non-production builds opened with `?debug` (not reachable in a bundled app). |
+| `NV_API_URL` | *(empty)* | Backend origin, e.g. `https://api.example.com`. Empty = the app plays fully offline (local profile and progress, LOCAL ONLY chip, no network calls). |
+| `NV_PUBLIC_URL` | *(empty)* | Public web address of the game, for share links. Empty = shares send text only. |
+
+Staging/production builds refuse `http://` and local addresses (`localhost`, `127.*`, `10.*`, `192.168.*` …): on a phone, `localhost` is the phone. Example: `NV_API_URL=https://api.example.com NV_PUBLIC_URL=https://play.example.com npm run android:aab`.
+
+When the app should reach your server, add the app origins to the server's `CORS_ORIGINS`: `https://localhost` (Android) and `capacitor://localhost` (iOS).
+
+**Live reload (development only, not yet tried on a device):** start `npm run dev`, then `npx cap run android --live-reload --host <your PC's LAN IP> --port 8080`. The CLI points the installed app at your dev server for that run only; `capacitor.config.json` never contains a server URL, so release builds always load the bundled files.
+
+### Release signing (Android)
+
+Never commit keys or passwords (`*.jks`, `*.keystore`, `keystore.properties` are git-ignored).
+
+1. Create an upload key once, keep it and its passwords safe (a password manager), and back it up:
+   `keytool -genkeypair -v -keystore night-vector-upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000`
+2. Either create `android/keystore.properties` (git-ignored):
+   ```
+   storeFile=../night-vector-upload.jks
+   storePassword=…
+   keyAlias=upload
+   keyPassword=…
+   ```
+   or set `NV_KEYSTORE_FILE`, `NV_KEYSTORE_PASSWORD`, `NV_KEY_ALIAS`, `NV_KEY_PASSWORD` in the shell / CI secrets.
+3. `npm run android:aab`. Without signing configured the AAB is built unsigned. Use **Play App Signing**: Google keeps the app signing key, you keep only the upload key.
+
+### iOS
+
+Prepared, not yet built: it needs macOS + Xcode. On a Mac: `npm ci`, `npm run ios`, select your team under *Signing & Capabilities*, run on a device. Configured: bundle ID, display name, landscape-only (iPhone and iPad, full screen), hidden status bar, version 1.2.0 (10200), icon and splash. Untested until then: audio session behaviour (Web Audio follows the silent switch), safe areas around the Dynamic Island in landscape, home-indicator gestures near the bottom touch pads, interruption handling (calls).
+
+### How the app behaves
+
+- **Lifecycle:** app sent to background → the race pauses, all audio (music, engine, sirens, chase track) is suspended in place, the save is written. Coming back shows **PAUSED** and waits for **RESUME** — never straight back into traffic. The frame clock is reset on return and every frame step is capped, so physics never jumps.
+- **Back key:** racing → pause · paused → resume (with the usual countdown) · sub-menu → previous menu · results → menu · home → the app goes to the background (Android convention).
+- **Screen:** landscape only, immersive (status and navigation bars hidden; swipe from an edge to show them briefly), drawn into the camera cutout with the HUD kept clear by the safe-area insets. Dark splash with the logo, no white flash.
+- **Haptics:** the game's existing pulses (near miss, boost, hit, crash, unlock) through the OS haptics engine, one call per event, honouring Settings → Haptics.
+- **Storage:** the same save (`client/js/storage.js`), mirrored to the OS key-value store and restored at startup if the WebView storage was cleared. App updates keep progress (same origin `https://localhost` — never change the app's scheme/hostname).
+- **No service worker** in the app: the files are in the app package already.
+- **Permissions:** `INTERNET`, `VIBRATE`, `ACCESS_NETWORK_STATE` — all install-time, no prompts. No cleartext HTTP.
+
+### Troubleshooting (problems met during the migration)
+
+- **`JAVA_HOME` points to a JDK that doesn't exist / no JDK 21:** install Temurin 21 (a per-user ZIP works without admin rights) or use Android Studio's JBR; `tools/android.mjs` finds both.
+- **Gradle: `Unable to establish loopback connection`:** JDK 16+ on Windows uses AF_UNIX sockets in the temp folder; on some machines (security/filter software) they fail under `AppData`. `tools/android.mjs` moves them to `%USERPROFILE%\.gradle\nv-uds`. In Android Studio, add `-Djdk.net.unixdomain.tmpdir=C:\Users\<you>\.gradle\nv-uds` to *Help → Edit Custom VM Options* and to `org.gradle.jvmargs` in your user `~/.gradle/gradle.properties`.
+- **`capacitor-assets` tries to write `www/manifest.json`:** only Android/iOS are generated (`--android --ios`); the PWA icons come from `npm run assets`. Use `npm run assets:native`, which also keeps the adaptive icon free of the tool's default 16.7 % inset.
+- **XML resource error at `colors.xml`:** `--` is not allowed inside XML comments.
+
 ## Testing and CI
 
 | Suite | Command | Covers |
@@ -371,7 +466,7 @@ Put a TLS-terminating reverse proxy in front (Caddy, nginx or a platform load ba
 ## Known limitations
 
 - **Chase music uses an original placeholder** until a licensed track is placed in `client/audio/` (see [Police chase music](#police-chase-music)). On iPhone, Web Audio follows the ring/silent switch (silent = no game audio in Safari); a native shell can set the audio session to play regardless.
-- **Not yet tested on physical phones.** Everything was verified in Chromium device emulation: real multi-touch via CDP, CPU throttling, synthetic motion-sensor events and a simulated gamepad. Real-device beta testing is the next step.
+- **The native Android app has not yet been run on a phone or emulator** (none was connected during the migration); its lifecycle, Back key, network, haptics and storage paths were tested against the real app bundle with a simulated Capacitor bridge. The iOS project is prepared but not built (needs macOS).
 - Safari/iOS and Firefox are untested. Known iOS gaps: no Fullscreen API on iPhone (use Add to Home Screen), no `navigator.vibrate` (haptics show "Not supported"), and orientation can't be locked from the web.
 - The road is flat (no hills), and all traffic drives in your direction.
 - Anti-cheat can't detect a modified client that plays in real time with believable numbers (see above).

@@ -1,4 +1,5 @@
 import { ENV } from './env.js';
+import { isNative } from './native.js';
 
 // Service-worker registration, update flow and install prompt.
 // Updates never apply on their own: the game decides when it's safe (not during a race)
@@ -29,7 +30,7 @@ export class Pwa {
   }
 
   get supported() {
-    return 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+    return !isNative() && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
   }
 
   get isStandalone() {

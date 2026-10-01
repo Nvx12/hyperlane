@@ -55,7 +55,8 @@ export class AudioManager {
   // Browsers only allow audio after a user gesture, so the context is created lazily.
   unlock() {
     if (this.ctx) {
-      if (this.ctx.state === 'suspended' && !this.paused) this.ctx.resume();
+      // 'interrupted' (iOS: phone call, Siri) is resumed like 'suspended'.
+      if (this.ctx.state !== 'running' && !this.paused) this.ctx.resume();
       return;
     }
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -187,7 +188,7 @@ export class AudioManager {
     const wasPaused = this.paused;
     this.paused = false;
     if (!this.ctx) return;
-    if (this.ctx.state === 'suspended') this.ctx.resume();
+    if (this.ctx.state !== 'running') this.ctx.resume(); // suspended, or 'interrupted' on iOS
     if (wasPaused && !this.settings.muted) {
       const t = this.ctx.currentTime;
       const g = this.master.gain;

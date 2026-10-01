@@ -1,11 +1,13 @@
 // Fullscreen with vendor fallbacks. The canvas already re-fits on window resize, which the
 // browser fires when entering/leaving fullscreen, so HUD, camera and touch layout follow.
+import { isNative } from './native.js';
+
 const doc = document;
 const root = document.documentElement;
 
 export const fullscreen = {
   get supported() {
-    return Boolean(root.requestFullscreen || root.webkitRequestFullscreen);
+    return !isNative() && Boolean(root.requestFullscreen || root.webkitRequestFullscreen);
   },
 
   get active() {

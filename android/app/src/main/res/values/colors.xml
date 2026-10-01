@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The game's background and accent colours (client/css/style.css: bg and pink). -->
+    <color name="nv_background">#06030D</color>
+    <color name="nv_accent">#FF2D95</color>
+</resources>

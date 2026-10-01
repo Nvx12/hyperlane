@@ -1,6 +1,8 @@
 import { ENVIRONMENTS } from './data/environments.js';
 import { validateDisplayName as checkName } from './names.js';
 import { GAME_NAME } from './version.js';
+import { ENV } from './env.js';
+import { isNative } from './native.js';
 
 // Sharing and challenge links. A challenge link carries only what's needed to show
 // "NAME scored N on ROUTE — beat it": public display name, score, distance, route. Never the
@@ -59,8 +61,12 @@ export function takeChallengeFromUrl() {
   return decodeChallenge(param);
 }
 
+// In the native app the page origin is the app itself (https://localhost), so links use the
+// configured public URL; without one the share carries the text only.
 export function challengeUrl(challenge) {
-  const base = new URL(location.pathname, location.origin);
+  const native = isNative();
+  if (native && !ENV.publicUrl) return '';
+  const base = native ? new URL(`${ENV.publicUrl}/`) : new URL(location.pathname, location.origin);
   base.searchParams.set('c', encodeChallenge(challenge));
   return base.toString();
 }
@@ -75,7 +81,7 @@ export async function shareRun(run) {
 async function deliver(text, url) {
   if (navigator.share) {
     try {
-      await navigator.share({ title: GAME_NAME, text, url });
+      await navigator.share(url ? { title: GAME_NAME, text, url } : { title: GAME_NAME, text });
       return 'shared';
     } catch (err) {
       if (err && err.name === 'AbortError') return 'cancelled';
@@ -83,7 +89,7 @@ async function deliver(text, url) {
     }
   }
   try {
-    await navigator.clipboard.writeText(`${text} ${url}`);
+    await navigator.clipboard.writeText(url ? `${text} ${url}` : text);
     return 'copied';
   } catch {
     return 'failed';
